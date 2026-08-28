@@ -61,7 +61,18 @@ function useReveal<T extends HTMLElement>() {
       { threshold: 0.12 }
     );
     observer.observe(node);
-    return () => observer.disconnect();
+
+    /*
+     * Failsafe: content must never be permanently stuck at opacity 0. If the
+     * observer never fires — a headless capture, an unscrolled tab, a print to
+     * PDF — show everything anyway. The animation is decoration, not a gate.
+     */
+    const failsafe = window.setTimeout(() => setShown(true), 2500);
+
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(failsafe);
+    };
   }, []);
 
   return { ref, className: shown ? "reveal is-shown" : "reveal" };
