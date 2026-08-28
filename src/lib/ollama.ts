@@ -12,6 +12,7 @@
  */
 
 import { PROMPT_TOOLS, executeTool } from "./webmcp";
+import type { PromptAgent } from "./agentStore";
 
 const DEFAULT_HOST = "http://localhost:11434";
 const HOST_KEY = "promptlab_ollama_host";
@@ -110,16 +111,33 @@ function toOllamaTools() {
   }));
 }
 
-const SYSTEM_PROMPT = `You are the Prompt Lab assistant. You help the user manage a library of reusable AI prompts.
+const BASE_SYSTEM_PROMPT = `You are the Prompt Lab assistant. You help the user turn rough ideas into excellent, reusable AI prompts and manage their prompt library.
 
 You have tools for searching, reading, creating, updating, rating, rendering and deleting prompts. Use them rather than guessing — never invent a prompt id, always look it up with search_prompts first.
 
 Rules:
-- Confirm with the user before calling delete_prompt.
+- Confirm with the user before calling delete_prompt or delete_agent.
 - After you create or change something, tell the user plainly what changed.
+- When a user has a rough idea, ask at most three high-value questions, then propose a small set of prompts covering the work from planning through critique.
+- Prompts must state a role, known context, required inputs, a process and an exact output format.
 - Keep replies short. The prompt library is visible on screen, so do not repeat full prompt text back unless asked.`;
 
+function systemPrompt(agent?: PromptAgent) {
+  if (!agent) return BASE_SYSTEM_PROMPT;
+  return `${BASE_SYSTEM_PROMPT}
+
+Active agent profile:
+- id: ${agent.id}
+- name: ${agent.name}
+- role: ${agent.role}
+- working style: ${agent.instructions}
+- default category: ${agent.defaultCategory}
+
+Adopt this profile. When calling create_prompt, pass agent_id "${agent.id}" and use category "${agent.defaultCategory}" unless the user requests another category.`;
+}
+
 export type ChatProgress = {
+  agent?: PromptAgent;
   onAssistant?: (message: ChatMessage) => void;
   onToolCall?: (name: string, input: Record<string, unknown>, result: string) => void;
 };
@@ -136,7 +154,7 @@ export async function chat(
   signal?: AbortSignal
 ): Promise<ChatMessage[]> {
   const messages: ChatMessage[] = [
-    { role: "system", content: SYSTEM_PROMPT },
+    { role: "system", content: systemPrompt(progress.agent) },
     ...history,
   ];
   const added: ChatMessage[] = [];

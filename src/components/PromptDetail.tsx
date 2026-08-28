@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { promptStore, type Prompt } from "../lib/promptStore";
+import type { PromptAgent } from "../lib/agentStore";
 import { extractVariables, renderPrompt } from "../lib/variables";
 
 type Props = {
   prompt: Prompt;
+  agents: PromptAgent[];
 };
 
-export function PromptDetail({ prompt }: Props) {
+export function PromptDetail({ prompt, agents }: Props) {
   const [editing, setEditing] = useState(false);
   const [title, setTitle] = useState(prompt.title);
   const [category, setCategory] = useState(prompt.category);
   const [content, setContent] = useState(prompt.content);
+  const [agentId, setAgentId] = useState(prompt.agentId ?? "");
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -32,9 +35,17 @@ export function PromptDetail({ prompt }: Props) {
     setTitle(prompt.title);
     setCategory(prompt.category);
     setContent(prompt.content);
+    setAgentId(prompt.agentId ?? "");
     setEditing(false);
     setConfirmDelete(false);
-  }, [prompt.id, prompt.updatedAt, prompt.title, prompt.category, prompt.content]);
+  }, [
+    prompt.id,
+    prompt.updatedAt,
+    prompt.title,
+    prompt.category,
+    prompt.content,
+    prompt.agentId,
+  ]);
 
   useEffect(() => {
     setValues({});
@@ -52,7 +63,12 @@ export function PromptDetail({ prompt }: Props) {
   }
 
   function save() {
-    promptStore.update(prompt.id, { title, category, content });
+    promptStore.update(prompt.id, {
+      title,
+      category,
+      content,
+      agentId: agentId || undefined,
+    });
     setEditing(false);
   }
 
@@ -61,6 +77,7 @@ export function PromptDetail({ prompt }: Props) {
       title: `${prompt.title} (copy)`,
       content: prompt.content,
       category: prompt.category,
+      agentId: prompt.agentId,
     });
   }
 
@@ -79,6 +96,22 @@ export function PromptDetail({ prompt }: Props) {
         </div>
 
         <div className="panel-body">
+          <div className="field">
+            <label className="label" htmlFor="edit-agent">
+              Agent <span className="optional">optional</span>
+            </label>
+            <select
+              id="edit-agent"
+              className="select"
+              value={agentId}
+              onChange={(event) => setAgentId(event.target.value)}
+            >
+              <option value="">No agent</option>
+              {agents.map((agent) => (
+                <option key={agent.id} value={agent.id}>{agent.name}</option>
+              ))}
+            </select>
+          </div>
           <div className="field">
             <label className="label" htmlFor="edit-title">
               Title
@@ -155,6 +188,11 @@ export function PromptDetail({ prompt }: Props) {
 
         <div className="row detail-meta">
           <span className="tag">{prompt.category}</span>
+          {prompt.agentId && agents.some((agent) => agent.id === prompt.agentId) && (
+            <span className="agent-byline">
+              by {agents.find((agent) => agent.id === prompt.agentId)?.name}
+            </span>
+          )}
 
           <span className="stars" role="group" aria-label="Rate prompt">
             {[1, 2, 3, 4, 5].map((value) => (

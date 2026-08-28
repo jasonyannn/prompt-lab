@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePrompts } from "../hooks/usePrompts";
+import { useAgents } from "../hooks/useAgents";
 import { promptStore } from "../lib/promptStore";
+import { agentStore } from "../lib/agentStore";
 import { WebMCPStatus } from "./WebMCPStatus";
 import { RightRail } from "./RightRail";
 import { PromptList, type SortKey } from "./PromptList";
 import { PromptDetail } from "./PromptDetail";
 import { NewPromptForm } from "./NewPromptForm";
+import { PromptStudio } from "./PromptStudio";
 import type { WebMCPState } from "../hooks/useWebMCP";
 
 type Props = {
@@ -17,8 +20,11 @@ export function Workspace({ webmcp, onHome }: Props) {
   const { ready, supported, tools, activity, clearActivity } = webmcp;
 
   const { prompts } = usePrompts();
+  const { agents } = useAgents();
+  const [view, setView] = useState<"library" | "studio">("library");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
+  const [agentFilter, setAgentFilter] = useState("All");
   const [sort, setSort] = useState<SortKey>("recent");
   const [selectedId, setSelectedId] = useState<string | null>(
     () => prompts[0]?.id ?? null
@@ -36,6 +42,7 @@ export function Workspace({ webmcp, onHome }: Props) {
 
     const filtered = prompts.filter((prompt) => {
       if (category !== "All" && prompt.category !== category) return false;
+      if (agentFilter !== "All" && prompt.agentId !== agentFilter) return false;
       if (!q) return true;
       return [prompt.title, prompt.content, prompt.category]
         .join(" ")
@@ -55,7 +62,7 @@ export function Workspace({ webmcp, onHome }: Props) {
           return b.updatedAt.localeCompare(a.updatedAt);
       }
     });
-  }, [prompts, query, category, sort]);
+  }, [prompts, query, category, agentFilter, sort]);
 
   // Keep a valid selection when agents create or delete prompts under us.
   useEffect(() => {
@@ -71,7 +78,11 @@ export function Workspace({ webmcp, onHome }: Props) {
   const selected = prompts.find((prompt) => prompt.id === selectedId) ?? null;
 
   function exportLibrary() {
-    const blob = new Blob([JSON.stringify(promptStore.getAll(), null, 2)], {
+    const blob = new Blob([JSON.stringify({
+      version: 2,
+      agents: agentStore.getAll(),
+      prompts: promptStore.getAll(),
+    }, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -85,13 +96,27 @@ export function Workspace({ webmcp, onHome }: Props) {
   async function importLibrary(file: File) {
     try {
       const parsed = JSON.parse(await file.text());
-      if (!Array.isArray(parsed)) throw new Error("not an array");
-      for (const entry of parsed) {
+      const entries = Array.isArray(parsed) ? parsed : parsed?.prompts;
+      if (!Array.isArray(entries)) throw new Error("missing prompts");
+
+      if (!Array.isArray(parsed) && Array.isArray(parsed.agents)) {
+        const validAgents = parsed.agents.filter(
+          (entry: unknown) =>
+            typeof (entry as { id?: unknown })?.id === "string" &&
+            typeof (entry as { name?: unknown })?.name === "string" &&
+            typeof (entry as { role?: unknown })?.role === "string" &&
+            typeof (entry as { instructions?: unknown })?.instructions === "string"
+        );
+        agentStore.replaceAll(validAgents);
+      }
+
+      for (const entry of entries) {
         if (typeof entry?.title === "string" && typeof entry?.content === "string") {
           promptStore.create({
             title: entry.title,
             content: entry.content,
             category: typeof entry.category === "string" ? entry.category : undefined,
+            agentId: typeof entry.agentId === "string" ? entry.agentId : undefined,
           });
         }
       }
@@ -109,12 +134,27 @@ export function Workspace({ webmcp, onHome }: Props) {
           <span className="tagline">agent-ready prompt library</span>
         </button>
 
+        <nav className="workspace-nav" aria-label="Workspace sections">
+          <button
+            className={view === "library" ? "is-active" : ""}
+            onClick={() => setView("library")}
+          >
+            Library
+          </button>
+          <button
+            className={view === "studio" ? "is-active" : ""}
+            onClick={() => setView("studio")}
+          >
+            Prompt Studio
+          </button>
+        </nav>
+
         <div className="topbar-spacer" />
 
-        <button className="btn btn-ghost" onClick={exportLibrary}>
+        <button className="btn btn-ghost topbar-file-action" onClick={exportLibrary}>
           Export
         </button>
-        <button className="btn btn-ghost" onClick={() => fileRef.current?.click()}>
+        <button className="btn btn-ghost topbar-file-action" onClick={() => fileRef.current?.click()}>
           Import
         </button>
         <input
@@ -132,17 +172,28 @@ export function Workspace({ webmcp, onHome }: Props) {
         <WebMCPStatus ready={ready} supported={supported} toolCount={tools.length} />
       </header>
 
-      <div className="columns">
+      {view === "studio" ? (
+        <PromptStudio
+          onOpenPrompt={(id) => {
+            setSelectedId(id);
+            setCreating(false);
+            setView("library");
+          }}
+        />
+      ) : <div className="columns">
         <PromptList
           prompts={visible}
           categories={categories}
+          agents={agents}
           activeCategory={category}
+          activeAgent={agentFilter}
           sort={sort}
           selectedId={selectedId}
           query={query}
           totalCount={prompts.length}
           onQueryChange={setQuery}
           onCategoryChange={setCategory}
+          onAgentChange={setAgentFilter}
           onSortChange={setSort}
           onSelect={(id) => {
             setSelectedId(id);
@@ -153,6 +204,7 @@ export function Workspace({ webmcp, onHome }: Props) {
 
         {creating ? (
           <NewPromptForm
+            agents={agents}
             onCreated={(id) => {
               setSelectedId(id);
               setCreating(false);
@@ -160,7 +212,11 @@ export function Workspace({ webmcp, onHome }: Props) {
             onCancel={() => setCreating(false)}
           />
         ) : selected ? (
-          <PromptDetail key={selected.id} prompt={selected} />
+          <PromptDetail
+            key={selected.id}
+            prompt={selected}
+            agents={agents}
+          />
         ) : (
           <section className="panel detail-panel">
             <div className="panel-head">
@@ -173,8 +229,13 @@ export function Workspace({ webmcp, onHome }: Props) {
           </section>
         )}
 
-        <RightRail activity={activity} tools={tools} onClear={clearActivity} />
-      </div>
+        <RightRail
+          activity={activity}
+          tools={tools}
+          onClear={clearActivity}
+          agents={agents}
+        />
+      </div>}
     </div>
   );
 }

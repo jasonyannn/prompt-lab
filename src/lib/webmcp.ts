@@ -10,6 +10,12 @@
  */
 
 import { promptStore, type Prompt } from "./promptStore";
+import { agentStore, type PromptAgent } from "./agentStore";
+import {
+  generatePromptPack,
+  PROMPT_TEMPLATES,
+  type PromptTemplateId,
+} from "./promptGenerator";
 import { extractVariables, renderPrompt } from "./variables";
 
 /* ------------------------------------------------------------------ *
@@ -163,6 +169,7 @@ function summarize(prompt: Prompt) {
     id: prompt.id,
     title: prompt.title,
     category: prompt.category,
+    agentId: prompt.agentId ?? null,
     rating: prompt.rating ?? null,
     usageCount: prompt.usageCount,
     preview:
@@ -182,11 +189,224 @@ function num(input: Record<string, unknown>, key: string): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;
 }
 
+function bool(input: Record<string, unknown>, key: string): boolean | undefined {
+  const value = input[key];
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function summarizeAgent(agent: PromptAgent) {
+  return {
+    id: agent.id,
+    name: agent.name,
+    role: agent.role,
+    instructions: agent.instructions,
+    defaultCategory: agent.defaultCategory,
+  };
+}
+
 /* ------------------------------------------------------------------ *
  * Tool definitions
  * ------------------------------------------------------------------ */
 
 export const PROMPT_TOOLS: ToolDescriptor[] = [
+  {
+    name: "list_agents",
+    description:
+      "List the user's Prompt Lab agent profiles. Agents define an expert role, working style and default prompt category.",
+    annotations: { readOnlyHint: true },
+    inputSchema: { type: "object", properties: {} },
+    execute: (input) => {
+      const agents = agentStore.getAll().map(summarizeAgent);
+      logActivity("list_agents", input, `${agents.length} agent${agents.length === 1 ? "" : "s"}`, true);
+      return ok({ count: agents.length, agents });
+    },
+  },
+
+  {
+    name: "create_agent",
+    description:
+      "Create a reusable Prompt Lab agent profile that can shape generated prompts and own a collection in the library.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short, distinctive agent name." },
+        role: { type: "string", description: "The expert role this agent should adopt." },
+        instructions: {
+          type: "string",
+          description: "How the agent should reason, prioritise and format its work.",
+        },
+        default_category: {
+          type: "string",
+          description: "Default library category for prompts made by this agent.",
+        },
+      },
+      required: ["name", "role", "instructions"],
+    },
+    execute: (input) => {
+      const name = str(input, "name");
+      const role = str(input, "role");
+      const instructions = str(input, "instructions");
+      if (!name || !role || !instructions) {
+        logActivity("create_agent", input, "Missing required agent fields", false);
+        return fail("`name`, `role` and `instructions` are required.");
+      }
+      const agent = agentStore.create({
+        name,
+        role,
+        instructions,
+        defaultCategory: str(input, "default_category"),
+      });
+      logActivity("create_agent", input, `Created agent "${agent.name}"`, true);
+      return ok({ created: true, agent: summarizeAgent(agent) });
+    },
+  },
+
+  {
+    name: "update_agent",
+    description: "Update an existing Prompt Lab agent profile. Omitted fields stay unchanged.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Agent id." },
+        name: { type: "string", description: "New agent name." },
+        role: { type: "string", description: "New expert role." },
+        instructions: { type: "string", description: "New working instructions." },
+        default_category: { type: "string", description: "New default category." },
+      },
+      required: ["id"],
+    },
+    execute: (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("update_agent", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+      const updates: Partial<
+        Pick<PromptAgent, "name" | "role" | "instructions" | "defaultCategory">
+      > = {};
+      const name = str(input, "name");
+      const role = str(input, "role");
+      const instructions = str(input, "instructions");
+      const defaultCategory = str(input, "default_category");
+      if (name) updates.name = name;
+      if (role) updates.role = role;
+      if (instructions) updates.instructions = instructions;
+      if (defaultCategory) updates.defaultCategory = defaultCategory;
+      if (Object.keys(updates).length === 0) {
+        logActivity("update_agent", input, "Nothing to update", false);
+        return fail("Provide at least one agent field to update.");
+      }
+      const agent = agentStore.update(id, updates);
+      if (!agent) {
+        logActivity("update_agent", input, `No agent with id ${id}`, false);
+        return fail(`No agent found with id "${id}".`);
+      }
+      logActivity("update_agent", input, `Updated agent "${agent.name}"`, true);
+      return ok({ updated: true, agent: summarizeAgent(agent) });
+    },
+  },
+
+  {
+    name: "generate_prompt_pack",
+    description:
+      "Turn a rough idea into four connected, reusable prompts shaped by one Prompt Lab agent. Saves them to the library by default.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agent_id: { type: "string", description: "Agent profile id from list_agents." },
+        idea: { type: "string", description: "What the user wants to create or accomplish." },
+        template: {
+          type: "string",
+          enum: PROMPT_TEMPLATES.map((template) => template.id),
+          description: "Workflow: app, design, research or content. Defaults to app.",
+        },
+        audience: { type: "string", description: "Who the outcome is for." },
+        platform: { type: "string", description: "Where the prompts will be used." },
+        source_data: { type: "string", description: "Inputs the user can supply to the AI." },
+        constraints: { type: "string", description: "Scope, time, technology or style constraints." },
+        save: { type: "boolean", description: "Save all generated prompts. Defaults to true." },
+      },
+      required: ["agent_id", "idea"],
+    },
+    execute: (input) => {
+      const agentId = str(input, "agent_id");
+      const idea = str(input, "idea");
+      const agent = agentId ? agentStore.get(agentId) : undefined;
+      if (!agentId || !idea) {
+        logActivity("generate_prompt_pack", input, "Missing agent_id or idea", false);
+        return fail("Both `agent_id` and `idea` are required.");
+      }
+      if (!agent) {
+        logActivity("generate_prompt_pack", input, `No agent with id ${agentId}`, false);
+        return fail(`No agent found with id "${agentId}".`);
+      }
+      const rawTemplate = str(input, "template") ?? "app";
+      const allowed = PROMPT_TEMPLATES.some((template) => template.id === rawTemplate);
+      if (!allowed) {
+        logActivity("generate_prompt_pack", input, `Unknown template ${rawTemplate}`, false);
+        return fail("`template` must be app, design, research or content.");
+      }
+      const generated = generatePromptPack(
+        {
+          idea,
+          audience: str(input, "audience") ?? "",
+          platform: str(input, "platform") ?? "",
+          sourceData: str(input, "source_data") ?? "",
+          constraints: str(input, "constraints") ?? "",
+          templateId: rawTemplate as PromptTemplateId,
+        },
+        agent
+      );
+      const shouldSave = bool(input, "save") ?? true;
+      const prompts = shouldSave
+        ? generated.map((item) =>
+            promptStore.create({
+              title: item.title,
+              content: item.content,
+              category: item.category,
+              agentId: agent.id,
+            })
+          )
+        : generated;
+      logActivity(
+        "generate_prompt_pack",
+        input,
+        `${shouldSave ? "Generated and saved" : "Generated"} ${prompts.length} prompts with "${agent.name}"`,
+        true
+      );
+      return ok({ generated: prompts.length, saved: shouldSave, prompts });
+    },
+  },
+
+  {
+    name: "delete_agent",
+    description:
+      "Permanently delete an agent profile. Its saved prompts remain in the library without an active owner.",
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The id of the agent to delete." },
+      },
+      required: ["id"],
+    },
+    execute: (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("delete_agent", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+      const agent = agentStore.get(id);
+      if (!agent) {
+        logActivity("delete_agent", input, `No agent with id ${id}`, false);
+        return fail(`No agent found with id "${id}".`);
+      }
+      agentStore.remove(id);
+      logActivity("delete_agent", input, `Deleted agent "${agent.name}"`, true);
+      return ok({ deleted: true, id, name: agent.name });
+    },
+  },
+
   {
     name: "search_prompts",
     description:
@@ -204,19 +424,27 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
           type: "number",
           description: "Maximum number of results to return. Defaults to 10.",
         },
+        agent_id: {
+          type: "string",
+          description: "Optional agent id to restrict results to one collection.",
+        },
       },
     },
     execute: (input) => {
       const query = str(input, "query");
       const limit = num(input, "limit") ?? 10;
+      const agentId = str(input, "agent_id");
 
-      const found = query ? promptStore.search(query) : promptStore.getAll();
+      const matches = query ? promptStore.search(query) : promptStore.getAll();
+      const found = agentId
+        ? matches.filter((prompt) => prompt.agentId === agentId)
+        : matches;
       const results = found.slice(0, Math.max(1, limit)).map(summarize);
 
       logActivity(
         "search_prompts",
         input,
-        `${results.length} result${results.length === 1 ? "" : "s"} for "${query ?? "all prompts"}"`,
+        `${results.length} result${results.length === 1 ? "" : "s"} for "${query ?? "all prompts"}"${agentId ? ` in agent ${agentId}` : ""}`,
         true
       );
 
@@ -268,6 +496,10 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
           description:
             "Grouping such as Design, Product, Engineering, Marketing. Defaults to General.",
         },
+        agent_id: {
+          type: "string",
+          description: "Optional owner agent id from list_agents.",
+        },
       },
       required: ["title", "content"],
     },
@@ -284,6 +516,7 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
         title,
         content,
         category: str(input, "category"),
+        agentId: str(input, "agent_id"),
       });
 
       logActivity("create_prompt", input, `Created "${prompt.title}"`, true);
@@ -302,6 +535,7 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
         title: { type: "string", description: "New title." },
         content: { type: "string", description: "New prompt text." },
         category: { type: "string", description: "New category." },
+        agent_id: { type: "string", description: "New owner agent id." },
       },
       required: ["id"],
     },
@@ -312,19 +546,21 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
         return fail("`id` is required.");
       }
 
-      const updates: Partial<Pick<Prompt, "title" | "content" | "category">> =
+      const updates: Partial<Pick<Prompt, "title" | "content" | "category" | "agentId">> =
         {};
       const title = str(input, "title");
       const content = str(input, "content");
       const category = str(input, "category");
+      const agentId = str(input, "agent_id");
 
       if (title) updates.title = title;
       if (content) updates.content = content;
       if (category) updates.category = category;
+      if (agentId) updates.agentId = agentId;
 
       if (Object.keys(updates).length === 0) {
         logActivity("update_prompt", input, "Nothing to update", false);
-        return fail("Provide at least one of `title`, `content` or `category`.");
+        return fail("Provide at least one of `title`, `content`, `category` or `agent_id`.");
       }
 
       const prompt = promptStore.update(id, updates);

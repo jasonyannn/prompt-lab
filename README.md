@@ -26,6 +26,11 @@ await document.modelContext.registerTool(tool, { signal: controller.signal });
 
 | Tool | Purpose |
 |---|---|
+| `list_agents` | List reusable agent profiles |
+| `create_agent` | Create an expert role and working style |
+| `update_agent` | Edit an agent profile |
+| `generate_prompt_pack` | Turn a rough idea into four connected prompts |
+| `delete_agent` | Remove an agent while keeping its prompts |
 | `search_prompts` | Keyword search across title, body and category |
 | `get_prompt` | Fetch one prompt in full |
 | `create_prompt` | Save a new reusable prompt |
@@ -55,6 +60,12 @@ time.
 
 - **Prompt variables** — write `{{product}}` in a prompt; both the UI and the
   `render_prompt` tool fill them in, with a live preview as you type.
+- **Prompt Studio** — choose a workflow, describe a rough idea, add any useful
+  audience / platform / source-data context, then generate an editable four-prompt pack.
+- **Custom agents** — create expert profiles with a role, working style and
+  default category. Generated packs and local chat both use the selected profile.
+- **Agent collections** — save prompts to an agent, filter the library by agent,
+  or reassign prompts while editing.
 - **Filter, sort and search** — category chips, sort by recent / most used /
   highest rated / title.
 - **Duplicate and delete**, with a confirm step on delete.
@@ -101,6 +112,8 @@ WebMCP requires a **secure origin**: localhost, or HTTPS in production.
 ```
 src/
   lib/promptStore.ts     localStorage-backed prompt CRUD + change events
+  lib/agentStore.ts      persistent custom agent profiles
+  lib/promptGenerator.ts guided brief → reusable prompt-pack generator
   lib/webmcp.ts          WebMCP types, tool definitions, registration, activity log
   hooks/useWebMCP.ts     registers the tool set once, exposes status + activity
   hooks/usePrompts.ts    live view of the library
@@ -111,7 +124,7 @@ src/
 ## Status
 
 Verified against a spec-accurate `document.modelContext` in a headless browser:
-all eight tools register and survive React StrictMode's remount, agent mutations
+all tools register and survive React StrictMode's remount, agent mutations
 refresh the UI live, error paths return `isError`, and the page loads with no
 console errors.
 

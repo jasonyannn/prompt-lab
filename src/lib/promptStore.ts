@@ -3,6 +3,7 @@ export type Prompt = {
   title: string;
   content: string;
   category: string;
+  agentId?: string;
   rating?: number;
   usageCount: number;
   createdAt: string;
@@ -16,6 +17,7 @@ const starterPrompts: Prompt[] = [
     id: "ux-audit",
     title: "Senior UX Audit",
     category: "Design",
+    agentId: "design-partner",
     content: `Act as a senior product designer and UX researcher.
 
 Audit the provided interface for:
@@ -42,6 +44,7 @@ For every issue provide:
     id: "prd-writer",
     title: "PRD Writer",
     category: "Product",
+    agentId: "product-builder",
     content: `Act as a senior product manager.
 
 Turn the provided product idea into a concise PRD.
@@ -113,6 +116,7 @@ export const promptStore = {
     title: string;
     content: string;
     category?: string;
+    agentId?: string;
   }): Prompt {
     const prompts = read();
 
@@ -121,6 +125,7 @@ export const promptStore = {
       title: input.title,
       content: input.content,
       category: input.category || "General",
+      agentId: input.agentId,
       usageCount: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -134,7 +139,7 @@ export const promptStore = {
   update(
     id: string,
     updates: Partial<
-      Pick<Prompt, "title" | "content" | "category" | "rating">
+      Pick<Prompt, "title" | "content" | "category" | "agentId" | "rating">
     >
   ): Prompt | null {
     const prompts = read();
@@ -177,5 +182,9 @@ export const promptStore = {
     write(
       read().filter((prompt) => prompt.id !== id)
     );
+  },
+
+  replaceAll(prompts: Prompt[]) {
+    write(prompts);
   },
 };
