@@ -29,6 +29,8 @@ await document.modelContext.registerTool(tool, { signal: controller.signal });
 | `update_prompt` | Edit title / content / category |
 | `rate_prompt` | Score a prompt 1–5 after use |
 | `record_prompt_use` | Increment usage count when a prompt is actually used |
+| `render_prompt` | Fill a prompt's `{{placeholders}}` and return finished text |
+| `delete_prompt` | Remove a prompt (marked `destructiveHint`) |
 
 Read-only tools carry `annotations.readOnlyHint`. Every tool has a full JSON
 Schema `inputSchema`, and failures return `isError: true` with a readable message
@@ -45,6 +47,40 @@ list and the open detail pane with no user interaction.
 Every tool call — successful or failed — is appended to an in-memory log and
 rendered in the Agent Activity panel, so you can watch an agent work in real
 time.
+
+## Features
+
+- **Prompt variables** — write `{{product}}` in a prompt; both the UI and the
+  `render_prompt` tool fill them in, with a live preview as you type.
+- **Filter, sort and search** — category chips, sort by recent / most used /
+  highest rated / title.
+- **Duplicate and delete**, with a confirm step on delete.
+- **Export / import** the whole library as JSON.
+- **Built-in local agent** — chat with Llama 3.2 through Ollama, wired to the
+  same tools (see below).
+- **Agent Activity feed** — every tool call, labelled by whether it came from
+  the browser's agent (`WEBMCP`) or the local model (`LOCAL`).
+
+## The built-in local agent (optional)
+
+The competition surface is `document.modelContext` — judges drive it with their
+own agent. The bundled Ollama panel is a *local demo* so the tool loop can be
+shown without a WebMCP-enabled browser. It calls the exact same tool
+implementations, through `executeTool()`.
+
+```bash
+OLLAMA_ORIGINS=* ollama serve   # CORS: the browser calls Ollama directly
+ollama pull llama3.2
+```
+
+Then open the **Local Agent** tab. The host and model are configurable and
+stored in `localStorage`.
+
+This panel is deliberately optional and fails soft: with no Ollama reachable it
+shows an offline notice, and WebMCP tools stay registered regardless. Note that
+a page served over HTTPS cannot reach `http://localhost:11434` (mixed content),
+so the local agent is a localhost-only convenience — which is why the WebMCP
+tools, not the local model, are the actual product.
 
 ## Running it
 
@@ -76,4 +112,12 @@ all six tools register and survive React StrictMode's remount, agent mutations
 refresh the UI live, error paths return `isError`, and the page loads with no
 console errors.
 
-Prompts persist to `localStorage` only — there is no backend yet.
+Prompts persist to `localStorage` only — there is no backend.
+
+The Ollama chat loop's tool-call round-tripping has not been exercised against a
+live model on the development machine; the offline path and the shared tool
+executor are covered.
+
+## License
+
+MIT — see [LICENSE](LICENSE).

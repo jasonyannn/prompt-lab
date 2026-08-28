@@ -1,0 +1,204 @@
+/**
+ * Local model integration (Llama 3.2 via Ollama).
+ *
+ * This is the *built-in demo agent*. It is deliberately optional: the
+ * competition surface is `document.modelContext`, which the browser's own agent
+ * drives. This panel exists so the tool loop can be demonstrated locally without
+ * a WebMCP-enabled browser, and it calls exactly the same tool implementations.
+ *
+ * Requires Ollama running with browser origins allowed:
+ *   OLLAMA_ORIGINS=* ollama serve
+ *   ollama pull llama3.2
+ */
+
+import { PROMPT_TOOLS, executeTool } from "./webmcp";
+
+const DEFAULT_HOST = "http://localhost:11434";
+const HOST_KEY = "promptlab_ollama_host";
+const MODEL_KEY = "promptlab_ollama_model";
+
+export const DEFAULT_MODEL = "llama3.2";
+
+export function getHost(): string {
+  return localStorage.getItem(HOST_KEY) || DEFAULT_HOST;
+}
+
+export function setHost(host: string) {
+  localStorage.setItem(HOST_KEY, host.replace(/\/$/, ""));
+}
+
+export function getModel(): string {
+  return localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL;
+}
+
+export function setModel(model: string) {
+  localStorage.setItem(MODEL_KEY, model);
+}
+
+/* ------------------------------------------------------------------ *
+ * Types
+ * ------------------------------------------------------------------ */
+
+export type ChatRole = "system" | "user" | "assistant" | "tool";
+
+export type ToolCall = {
+  function: { name: string; arguments: Record<string, unknown> };
+};
+
+export type ChatMessage = {
+  role: ChatRole;
+  content: string;
+  tool_calls?: ToolCall[];
+  tool_name?: string;
+};
+
+export type OllamaStatus =
+  | { state: "checking" }
+  | { state: "ready"; models: string[] }
+  | { state: "unavailable"; reason: string };
+
+/* ------------------------------------------------------------------ *
+ * Availability
+ * ------------------------------------------------------------------ */
+
+export async function checkOllama(): Promise<OllamaStatus> {
+  // A deployed HTTPS page cannot reach http://localhost — say so precisely
+  // rather than surfacing an opaque network error.
+  if (
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    getHost().startsWith("http://")
+  ) {
+    return {
+      state: "unavailable",
+      reason:
+        "This page is served over HTTPS, so the browser blocks requests to a local http:// Ollama. Run Prompt Lab locally to use the built-in agent.",
+    };
+  }
+
+  try {
+    const response = await fetch(`${getHost()}/api/tags`, {
+      signal: AbortSignal.timeout(4000),
+    });
+    if (!response.ok) {
+      return { state: "unavailable", reason: `Ollama returned ${response.status}.` };
+    }
+    const data = (await response.json()) as { models?: { name: string }[] };
+    return { state: "ready", models: (data.models ?? []).map((m) => m.name) };
+  } catch {
+    return {
+      state: "unavailable",
+      reason:
+        "Could not reach Ollama. Start it with `OLLAMA_ORIGINS=* ollama serve`, then `ollama pull llama3.2`.",
+    };
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Tool bridging
+ * ------------------------------------------------------------------ */
+
+/** Maps the WebMCP tool descriptors into Ollama's function-calling schema. */
+function toOllamaTools() {
+  return PROMPT_TOOLS.map((tool) => ({
+    type: "function" as const,
+    function: {
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema,
+    },
+  }));
+}
+
+const SYSTEM_PROMPT = `You are the Prompt Lab assistant. You help the user manage a library of reusable AI prompts.
+
+You have tools for searching, reading, creating, updating, rating, rendering and deleting prompts. Use them rather than guessing — never invent a prompt id, always look it up with search_prompts first.
+
+Rules:
+- Confirm with the user before calling delete_prompt.
+- After you create or change something, tell the user plainly what changed.
+- Keep replies short. The prompt library is visible on screen, so do not repeat full prompt text back unless asked.`;
+
+export type ChatProgress = {
+  onAssistant?: (message: ChatMessage) => void;
+  onToolCall?: (name: string, input: Record<string, unknown>, result: string) => void;
+};
+
+const MAX_TOOL_ROUNDS = 5;
+
+/**
+ * Runs one turn of conversation, resolving any tool calls the model requests
+ * and feeding results back until it produces a final answer.
+ */
+export async function chat(
+  history: ChatMessage[],
+  progress: ChatProgress = {},
+  signal?: AbortSignal
+): Promise<ChatMessage[]> {
+  const messages: ChatMessage[] = [
+    { role: "system", content: SYSTEM_PROMPT },
+    ...history,
+  ];
+  const added: ChatMessage[] = [];
+
+  for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+    const response = await fetch(`${getHost()}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal,
+      body: JSON.stringify({
+        model: getModel(),
+        messages: messages.map(({ role, content, tool_calls }) => ({
+          role,
+          content,
+          ...(tool_calls ? { tool_calls } : {}),
+        })),
+        tools: toOllamaTools(),
+        stream: false,
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Ollama error ${response.status}: ${await response.text()}`);
+    }
+
+    const data = (await response.json()) as { message?: ChatMessage };
+    const reply = data.message;
+    if (!reply) throw new Error("Ollama returned no message.");
+
+    const assistant: ChatMessage = {
+      role: "assistant",
+      content: reply.content ?? "",
+      tool_calls: reply.tool_calls,
+    };
+    messages.push(assistant);
+    added.push(assistant);
+    progress.onAssistant?.(assistant);
+
+    const calls = reply.tool_calls ?? [];
+    if (calls.length === 0) return added;
+
+    for (const call of calls) {
+      const name = call.function?.name;
+      const args = call.function?.arguments ?? {};
+      const result = await executeTool(name, args, "local");
+      const text = result.content.map((part) => part.text).join("\n");
+
+      const toolMessage: ChatMessage = {
+        role: "tool",
+        content: text,
+        tool_name: name,
+      };
+      messages.push(toolMessage);
+      added.push(toolMessage);
+      progress.onToolCall?.(name, args, text);
+    }
+  }
+
+  const bail: ChatMessage = {
+    role: "assistant",
+    content: "Stopped after too many tool calls in one turn.",
+  };
+  added.push(bail);
+  return added;
+}
