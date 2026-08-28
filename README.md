@@ -1,5 +1,8 @@
 # Prompt Lab
 
+**Live: https://jasonyannn.github.io/prompt-lab/**
+(open in ChatGPT's in-app browser, or Chrome 149+ with WebMCP enabled)
+
 A prompt library that exposes its real functionality to AI agents through
 **WebMCP** — the browser's native `document.modelContext` API.
 
