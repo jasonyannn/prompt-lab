@@ -108,7 +108,7 @@ src/
 ## Status
 
 Verified against a spec-accurate `document.modelContext` in a headless browser:
-all six tools register and survive React StrictMode's remount, agent mutations
+all eight tools register and survive React StrictMode's remount, agent mutations
 refresh the UI live, error paths return `isError`, and the page loads with no
 console errors.
 
