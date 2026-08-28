@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useWebMCP } from "./hooks/useWebMCP";
-import { usePrompts } from "./hooks/usePrompts";
-import { promptStore } from "./lib/promptStore";
-import { WebMCPStatus } from "./components/WebMCPStatus";
-import { RightRail } from "./components/RightRail";
-import { PromptList, type SortKey } from "./components/PromptList";
-import { PromptDetail } from "./components/PromptDetail";
-import { NewPromptForm } from "./components/NewPromptForm";
+import { usePrompts } from "../hooks/usePrompts";
+import { promptStore } from "../lib/promptStore";
+import { WebMCPStatus } from "./WebMCPStatus";
+import { RightRail } from "./RightRail";
+import { PromptList, type SortKey } from "./PromptList";
+import { PromptDetail } from "./PromptDetail";
+import { NewPromptForm } from "./NewPromptForm";
+import type { WebMCPState } from "../hooks/useWebMCP";
 
-export default function App() {
-  // Registers the Prompt Lab tools on document.modelContext. Called once,
-  // from the root component.
-  const { ready, supported, tools, activity, clearActivity } = useWebMCP();
+type Props = {
+  webmcp: WebMCPState;
+  onHome: () => void;
+};
+
+export function Workspace({ webmcp, onHome }: Props) {
+  const { ready, supported, tools, activity, clearActivity } = webmcp;
 
   const { prompts } = usePrompts();
   const [query, setQuery] = useState("");
@@ -100,11 +103,11 @@ export default function App() {
   return (
     <div className="app">
       <header className="topbar">
-        <div className="brand">
+        <button className="brand brand-button" onClick={onHome}>
           <span className="mark" aria-hidden="true" />
           <h1>Prompt Lab</h1>
           <span className="tagline">agent-ready prompt library</span>
-        </div>
+        </button>
 
         <div className="topbar-spacer" />
 
