@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AgentChat } from "./AgentChat";
 import { AgentActivity } from "./AgentActivity";
 import type { ActivityEntry } from "../lib/webmcp";
+import type { PromptAgent } from "../lib/agentStore";
 
 type Tab = "agent" | "activity";
 
@@ -9,9 +10,10 @@ type Props = {
   activity: ActivityEntry[];
   tools: string[];
   onClear: () => void;
+  agents: PromptAgent[];
 };
 
-export function RightRail({ activity, tools, onClear }: Props) {
+export function RightRail({ activity, tools, onClear, agents }: Props) {
   const [tab, setTab] = useState<Tab>("agent");
 
   return (
@@ -38,7 +40,7 @@ export function RightRail({ activity, tools, onClear }: Props) {
 
       <div className="panel rail-panel">
         {tab === "agent" ? (
-          <AgentChat />
+          <AgentChat agents={agents} />
         ) : (
           <AgentActivity activity={activity} tools={tools} onClear={onClear} />
         )}

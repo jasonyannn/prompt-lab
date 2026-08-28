@@ -1,15 +1,18 @@
 import { useState } from "react";
 import { promptStore } from "../lib/promptStore";
+import type { PromptAgent } from "../lib/agentStore";
 
 type Props = {
   onCreated: (id: string) => void;
   onCancel: () => void;
+  agents: PromptAgent[];
 };
 
-export function NewPromptForm({ onCreated, onCancel }: Props) {
+export function NewPromptForm({ onCreated, onCancel, agents }: Props) {
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("General");
   const [content, setContent] = useState("");
+  const [agentId, setAgentId] = useState("");
 
   const canSave = title.trim() !== "" && content.trim() !== "";
 
@@ -19,6 +22,7 @@ export function NewPromptForm({ onCreated, onCancel }: Props) {
       title: title.trim(),
       content: content.trim(),
       category: category.trim() || "General",
+      agentId: agentId || undefined,
     });
     onCreated(prompt.id);
   }
@@ -37,6 +41,23 @@ export function NewPromptForm({ onCreated, onCancel }: Props) {
       </div>
 
       <div className="panel-body">
+        <div className="field">
+          <label className="label" htmlFor="new-agent">
+            Agent <span className="optional">optional</span>
+          </label>
+          <select
+            id="new-agent"
+            className="select"
+            value={agentId}
+            onChange={(event) => setAgentId(event.target.value)}
+          >
+            <option value="">No agent</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>{agent.name}</option>
+            ))}
+          </select>
+        </div>
+
         <div className="field">
           <label className="label" htmlFor="new-title">
             Title

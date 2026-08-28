@@ -20,7 +20,7 @@ const STEPS = [
   {
     n: "01",
     title: "The page declares its tools",
-    body: "On load, Prompt Lab registers eight typed tools against the browser's own model context. No plugin, no server, no bespoke protocol.",
+    body: "On load, Prompt Lab registers its typed tools against the browser's own model context. No plugin, no server, no bespoke protocol.",
   },
   {
     n: "02",
@@ -170,7 +170,7 @@ export function Landing({ webmcp, onEnter }: Props) {
 
           <p className="lede">
             Most web apps make an agent read pixels and guess at buttons. Prompt
-            Lab hands it eight typed tools instead — registered on the browser's
+            Lab hands it a complete set of typed tools instead — registered on the browser's
             native <code>document.modelContext</code>, so anything it can do, you
             can watch it do.
           </p>
@@ -180,7 +180,7 @@ export function Landing({ webmcp, onEnter }: Props) {
               Open the app →
             </button>
             <a className="btn btn-lg btn-quiet" href="#tools">
-              See the eight tools
+              Explore the tools
             </a>
           </div>
 

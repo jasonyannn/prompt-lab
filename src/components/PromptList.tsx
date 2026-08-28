@@ -1,17 +1,21 @@
 import type { Prompt } from "../lib/promptStore";
+import type { PromptAgent } from "../lib/agentStore";
 
 export type SortKey = "recent" | "used" | "rated" | "title";
 
 type Props = {
   prompts: Prompt[];
   categories: string[];
+  agents: PromptAgent[];
   activeCategory: string;
+  activeAgent: string;
   sort: SortKey;
   selectedId: string | null;
   query: string;
   totalCount: number;
   onQueryChange: (query: string) => void;
   onCategoryChange: (category: string) => void;
+  onAgentChange: (agentId: string) => void;
   onSortChange: (sort: SortKey) => void;
   onSelect: (id: string) => void;
   onNew: () => void;
@@ -20,13 +24,16 @@ type Props = {
 export function PromptList({
   prompts,
   categories,
+  agents,
   activeCategory,
+  activeAgent,
   sort,
   selectedId,
   query,
   totalCount,
   onQueryChange,
   onCategoryChange,
+  onAgentChange,
   onSortChange,
   onSelect,
   onNew,
@@ -84,6 +91,18 @@ export function PromptList({
           <option value="rated">Highest rated</option>
           <option value="title">Title A–Z</option>
         </select>
+
+        <select
+          className="select"
+          value={activeAgent}
+          onChange={(event) => onAgentChange(event.target.value)}
+          aria-label="Filter prompts by agent"
+        >
+          <option value="All">All agents</option>
+          {agents.map((agent) => (
+            <option key={agent.id} value={agent.id}>{agent.name}</option>
+          ))}
+        </select>
       </div>
 
       <div className="list-scroll">
@@ -99,6 +118,11 @@ export function PromptList({
               <h3>{prompt.title}</h3>
               <div className="meta">
                 <span className="tag">{prompt.category}</span>
+                {prompt.agentId && agents.some((agent) => agent.id === prompt.agentId) && (
+                  <span className="prompt-agent-name">
+                    {agents.find((agent) => agent.id === prompt.agentId)?.name}
+                  </span>
+                )}
                 <span>{prompt.rating ? `★ ${prompt.rating.toFixed(1)}` : "unrated"}</span>
                 <span>{prompt.usageCount}× used</span>
               </div>

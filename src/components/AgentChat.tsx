@@ -8,25 +8,34 @@ import {
   type ChatMessage,
   type OllamaStatus,
 } from "../lib/ollama";
+import type { PromptAgent } from "../lib/agentStore";
 
 const SUGGESTIONS = [
+  "I'm building a design AI app. What prompts should I create?",
+  "Help me improve one of my saved prompts",
   "What prompts do I have?",
-  "Save a prompt for writing release notes",
-  "Rate the UX audit prompt 5 stars",
 ];
 
-export function AgentChat() {
+type Props = { agents: PromptAgent[] };
+
+export function AgentChat({ agents }: Props) {
   const [status, setStatus] = useState<OllamaStatus>({ state: "checking" });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [model, setModelState] = useState(() => getModel());
+  const [agentId, setAgentId] = useState(() => agents[0]?.id ?? "");
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void checkOllama().then(setStatus);
   }, []);
+
+  useEffect(() => {
+    if (agentId && agents.some((agent) => agent.id === agentId)) return;
+    setAgentId(agents[0]?.id ?? "");
+  }, [agentId, agents]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
@@ -44,6 +53,7 @@ export function AgentChat() {
 
     try {
       const added = await chat(next, {
+        agent: agents.find((agent) => agent.id === agentId),
         onAssistant: (message) => setMessages((prev) => [...prev, message]),
         onToolCall: (name, _input, result) =>
           setMessages((prev) => [
@@ -106,7 +116,7 @@ export function AgentChat() {
         {messages.length === 0 && (
           <div className="chat-intro">
             <p className="empty" style={{ padding: "10px 0" }}>
-              Llama 3.2 running locally, wired to the same tools.
+              Ask a rough question. Your selected agent can shape and save the prompts for you.
             </p>
             {SUGGESTIONS.map((suggestion) => (
               <button
@@ -166,9 +176,26 @@ export function AgentChat() {
           void send(input);
         }}
       >
+        {agents.length > 0 && (
+          <select
+            className="chat-agent-select"
+            value={agentId}
+            onChange={(event) => {
+              setAgentId(event.target.value);
+              setMessages([]);
+              setError(null);
+            }}
+            aria-label="Chat as agent"
+            disabled={busy}
+          >
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>{agent.name}</option>
+            ))}
+          </select>
+        )}
         <input
           className="input"
-          placeholder="Ask the local agent…"
+          placeholder="Ask for prompts or refine an idea…"
           value={input}
           onChange={(event) => setInput(event.target.value)}
           disabled={busy}
