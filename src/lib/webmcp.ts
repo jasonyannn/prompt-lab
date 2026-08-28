@@ -10,6 +10,7 @@
  */
 
 import { promptStore, type Prompt } from "./promptStore";
+import { extractVariables, renderPrompt } from "./variables";
 
 /* ------------------------------------------------------------------ *
  * Ambient types for the WebMCP surface
@@ -80,9 +81,13 @@ export function isWebMCPAvailable(): boolean {
  * Agent activity log
  * ------------------------------------------------------------------ */
 
+/** Where a tool call came from: the browser's agent, or the built-in local model. */
+export type ActivitySource = "webmcp" | "local";
+
 export type ActivityEntry = {
   id: string;
   tool: string;
+  source: ActivitySource;
   input: Record<string, unknown>;
   summary: string;
   ok: boolean;
@@ -107,6 +112,12 @@ export function subscribeToActivity(
   };
 }
 
+/**
+ * Tool bodies are synchronous and JS is single-threaded, so a module-level
+ * marker safely attributes a call to whoever invoked it.
+ */
+let activeSource: ActivitySource = "webmcp";
+
 function logActivity(
   tool: string,
   input: Record<string, unknown>,
@@ -116,6 +127,7 @@ function logActivity(
   const entry: ActivityEntry = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     tool,
+    source: activeSource,
     input,
     summary,
     ok,
@@ -238,7 +250,7 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
       }
 
       logActivity("get_prompt", input, `Read "${prompt.title}"`, true);
-      return ok(prompt);
+      return ok({ ...prompt, variables: extractVariables(prompt.content) });
     },
   },
 
@@ -412,6 +424,99 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
       return ok({ recorded: true, usageCount: prompt.usageCount, prompt });
     },
   },
+
+  {
+    name: "render_prompt",
+    description:
+      "Fill in a prompt's {{placeholders}} and return the finished, ready-to-use text. Records the use automatically. Call get_prompt first to see which variables a prompt needs.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The id of the prompt to render." },
+        variables: {
+          type: "object",
+          description:
+            'Values keyed by placeholder name, e.g. {"product": "Prompt Lab"}.',
+          additionalProperties: { type: "string" },
+        },
+      },
+      required: ["id"],
+    },
+    execute: (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("render_prompt", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      const prompt = promptStore.get(id);
+      if (!prompt) {
+        logActivity("render_prompt", input, `No prompt with id ${id}`, false);
+        return fail(`No prompt found with id "${id}".`);
+      }
+
+      const raw = input.variables;
+      const values: Record<string, string> = {};
+      if (raw && typeof raw === "object") {
+        for (const [key, value] of Object.entries(raw as object)) {
+          if (typeof value === "string") values[key] = value;
+        }
+      }
+
+      const needed = extractVariables(prompt.content);
+      const unfilled = needed.filter((name) => !values[name]);
+      const text = renderPrompt(prompt.content, values);
+
+      promptStore.recordUse(id);
+
+      logActivity(
+        "render_prompt",
+        input,
+        unfilled.length
+          ? `Rendered "${prompt.title}" — ${unfilled.length} placeholder(s) left`
+          : `Rendered "${prompt.title}"`,
+        true
+      );
+
+      return ok({
+        title: prompt.title,
+        text,
+        variablesFilled: Object.keys(values),
+        variablesMissing: unfilled,
+      });
+    },
+  },
+
+  {
+    name: "delete_prompt",
+    description:
+      "Permanently remove a prompt from the Prompt Lab library. Confirm with the user before calling this — it cannot be undone.",
+    annotations: { destructiveHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The id of the prompt to delete." },
+      },
+      required: ["id"],
+    },
+    execute: (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("delete_prompt", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      const prompt = promptStore.get(id);
+      if (!prompt) {
+        logActivity("delete_prompt", input, `No prompt with id ${id}`, false);
+        return fail(`No prompt found with id "${id}".`);
+      }
+
+      promptStore.remove(id);
+      logActivity("delete_prompt", input, `Deleted "${prompt.title}"`, true);
+      return ok({ deleted: true, id, title: prompt.title });
+    },
+  },
 ];
 
 export const TOOL_NAMES = PROMPT_TOOLS.map((tool) => tool.name);
@@ -442,4 +547,27 @@ export async function registerPromptTools(): Promise<AbortController | null> {
   }
 
   return controller;
+}
+
+
+/**
+ * Runs a registered tool by name, attributing the call to `source` in the
+ * activity feed. Used by the built-in local agent so it exercises exactly the
+ * same tool implementations the browser's agent does.
+ */
+export async function executeTool(
+  name: string,
+  input: Record<string, unknown>,
+  source: ActivitySource = "local"
+): Promise<ToolResult> {
+  const tool = PROMPT_TOOLS.find((candidate) => candidate.name === name);
+  if (!tool) return fail(`Unknown tool "${name}".`);
+
+  const previous = activeSource;
+  activeSource = source;
+  try {
+    return await tool.execute(input, {});
+  } finally {
+    activeSource = previous;
+  }
 }
