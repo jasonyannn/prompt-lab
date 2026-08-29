@@ -26,6 +26,8 @@ await document.modelContext.registerTool(tool, { signal: controller.signal });
 
 | Tool | Purpose |
 |---|---|
+| `list_attachments` | List source files attached in the active view |
+| `read_attachment` | Return extracted document text or native image content |
 | `list_agents` | List reusable agent profiles |
 | `create_agent` | Create an expert role and working style |
 | `update_agent` | Edit an agent profile |
@@ -58,6 +60,9 @@ time.
 
 ## Features
 
+- **Document and image attachments** — drag in PDF, DOCX, text-based files, or
+  common image formats. Documents are extracted locally and images are available
+  to WebMCP agents and vision-capable local models.
 - **Prompt variables** — write `{{product}}` in a prompt; both the UI and the
   `render_prompt` tool fill them in, with a live preview as you type.
 - **Prompt Studio** — choose a workflow, describe a rough idea, add any useful
@@ -87,6 +92,9 @@ OLLAMA_ORIGINS=* ollama serve   # CORS: the browser calls Ollama directly
 ollama pull llama3.2
 ```
 
+For image interpretation, select a vision-capable Ollama model (for example,
+`llama3.2-vision`). Text-only models can still use extracted document content.
+
 Then open the **Local Agent** tab. The host and model are configurable and
 stored in `localStorage`.
 
@@ -114,6 +122,7 @@ src/
   lib/promptStore.ts     localStorage-backed prompt CRUD + change events
   lib/agentStore.ts      persistent custom agent profiles
   lib/promptGenerator.ts guided brief → reusable prompt-pack generator
+  lib/attachments.ts     local file validation, extraction and WebMCP scope
   lib/webmcp.ts          WebMCP types, tool definitions, registration, activity log
   hooks/useWebMCP.ts     registers the tool set once, exposes status + activity
   hooks/usePrompts.ts    live view of the library

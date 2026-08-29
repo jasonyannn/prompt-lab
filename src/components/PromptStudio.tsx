@@ -9,6 +9,8 @@ import {
   type PromptBrief,
   type PromptTemplateId,
 } from "../lib/promptGenerator";
+import { attachmentContext, type UserAttachment } from "../lib/attachments";
+import { AttachmentPicker } from "./AttachmentPicker";
 import { AgentManager } from "./AgentManager";
 
 type Props = {
@@ -37,6 +39,7 @@ export function PromptStudio({ onOpenPrompt }: Props) {
     () => agents[0]?.id ?? null
   );
   const [brief, setBrief] = useState<PromptBrief>(EMPTY_BRIEF);
+  const [attachments, setAttachments] = useState<UserAttachment[]>([]);
   const [generated, setGenerated] = useState<GeneratedPrompt[]>([]);
   const [savedIds, setSavedIds] = useState<Record<string, string>>({});
 
@@ -53,7 +56,16 @@ export function PromptStudio({ onOpenPrompt }: Props) {
 
   function generate() {
     if (!brief.idea.trim() || !selectedAgent) return;
-    setGenerated(generatePromptPack({ ...brief, idea: brief.idea.trim() }, selectedAgent));
+    setGenerated(
+      generatePromptPack(
+        {
+          ...brief,
+          idea: brief.idea.trim(),
+          sourceMaterial: attachmentContext(attachments, 12_000),
+        },
+        selectedAgent
+      )
+    );
     setSavedIds({});
   }
 
@@ -229,6 +241,22 @@ export function PromptStudio({ onOpenPrompt }: Props) {
                   onChange={(event) => setBrief({ ...brief, constraints: event.target.value })}
                 />
               </div>
+            </div>
+
+            <div className="field studio-attachments">
+              <div className="attachment-label-row">
+                <label className="label">Reference files</label>
+                <span className="hint no-margin">Processed only in this browser</span>
+              </div>
+              <AttachmentPicker
+                attachments={attachments}
+                onChange={setAttachments}
+              />
+              <p className="hint">
+                Document text is embedded into generated prompts. A WebMCP agent can
+                inspect both documents and images; Local Agent image analysis requires
+                a vision-capable model.
+              </p>
             </div>
 
             <div className="generate-row">
