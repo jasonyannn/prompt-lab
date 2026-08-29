@@ -136,4 +136,7 @@ executor are covered.
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Copyright © 2026 Jason Yan and Makito Mizushima.
+
+The source code is licensed under the MIT License — see [LICENSE](LICENSE).
+Ownership and trademark details are in [NOTICE.md](NOTICE.md).
