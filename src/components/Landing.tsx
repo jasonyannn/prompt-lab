@@ -99,6 +99,14 @@ function Section({
 export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
   const { user, checking, signIn, signOut } = useAuth();
   const [email, setEmail] = useState("");
+  const emailRef = useRef<HTMLInputElement>(null);
+
+  /** Scroll to the card *and* focus the field, so one click is enough. */
+  function focusSignIn() {
+    document.getElementById("signin")?.scrollIntoView({ behavior: "smooth", block: "center" });
+    // Focus once the smooth scroll settles, or it fights the animation.
+    window.setTimeout(() => emailRef.current?.focus(), 420);
+  }
   const [authState, setAuthState] = useState<
     { kind: "idle" | "sending" } | { kind: "sent" | "error"; text: string }
   >({ kind: "idle" });
@@ -193,15 +201,9 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                     ? `WebMCP Ready · ${webmcp.tools.length}`
                     : "MCP endpoint offline"}
             </span>
-            {user ? (
-              <a className="btn btn-quiet" href="#signin">
-                {user.email ?? "Account"}
-              </a>
-            ) : (
-              <a className="btn btn-quiet" href="#signin">
-                Sign in
-              </a>
-            )}
+            <button className="btn btn-quiet" onClick={focusSignIn}>
+              {user ? (user.email ?? "Account") : "Sign in"}
+            </button>
             <button className="btn btn-primary" onClick={onEnter}>
               Open the app
             </button>
@@ -234,9 +236,9 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
             <button className="btn btn-primary btn-lg" onClick={onEnter}>
               Open the app →
             </button>
-            <a className="btn btn-lg btn-quiet" href="#signin">
+            <button className="btn btn-lg btn-quiet" onClick={focusSignIn}>
               {user ? "Your account" : "Sign in"}
-            </a>
+            </button>
             <a className="btn btn-lg btn-quiet" href="#tools">
               Explore the tools
             </a>
@@ -299,6 +301,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                     }}
                   >
                     <input
+                        ref={emailRef}
                         className="input"
                         type="email"
                         autoComplete="email"
