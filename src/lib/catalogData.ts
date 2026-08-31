@@ -19,7 +19,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
     name: "E-commerce",
     tagline: "Find something to sell, build the store, sell more of it.",
     mark: "EC",
-    librarySuggestion: "Marketing",
+    librarySuggestion: "E-commerce",
     subcategories: [
       { id: "research", name: "Product & market research" },
       { id: "store", name: "Store & product pages" },
@@ -46,7 +46,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
     name: "Business & Startups",
     tagline: "Decide what to build, who buys it, and how it runs.",
     mark: "BZ",
-    librarySuggestion: "Marketing",
+    librarySuggestion: "Business",
     subcategories: [
       { id: "ideas", name: "Ideas & validation" },
       { id: "strategy", name: "Strategy & positioning" },
@@ -59,7 +59,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
     name: "Career",
     tagline: "Get the interview, handle it well, get paid properly.",
     mark: "CR",
-    librarySuggestion: "Personal",
+    librarySuggestion: "Career",
     subcategories: [
       { id: "applications", name: "Applications" },
       { id: "interview", name: "Interviews" },
@@ -83,7 +83,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
     name: "Learning & Study",
     tagline: "Understand hard things faster, and remember them.",
     mark: "ED",
-    librarySuggestion: "Personal",
+    librarySuggestion: "Education",
     subcategories: [
       { id: "understand", name: "Understanding" },
       { id: "practice", name: "Practice & recall" },
@@ -95,7 +95,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
     name: "Writing & Content",
     tagline: "Find the idea, write the draft, cut it until it's good.",
     mark: "WR",
-    librarySuggestion: "Marketing",
+    librarySuggestion: "Writing",
     subcategories: [
       { id: "ideas", name: "Ideas & angles" },
       { id: "drafting", name: "Drafting" },
@@ -108,7 +108,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
     name: "Productivity",
     tagline: "Decide what matters, then actually get to it.",
     mark: "PR",
-    librarySuggestion: "Personal",
+    librarySuggestion: "Productivity",
     subcategories: [
       { id: "planning", name: "Planning" },
       { id: "decisions", name: "Decisions" },
@@ -120,7 +120,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
     name: "Health & Fitness",
     tagline: "A plan that fits the life you actually have.",
     mark: "HE",
-    librarySuggestion: "Hobbies",
+    librarySuggestion: "Health",
     subcategories: [
       { id: "training", name: "Training" },
       { id: "food", name: "Food" },
@@ -132,7 +132,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
     name: "Relationships",
     tagline: "Say the hard thing well, and repair it afterwards.",
     mark: "RE",
-    librarySuggestion: "Personal",
+    librarySuggestion: "Relationships",
     subcategories: [
       { id: "conversations", name: "Difficult conversations" },
       { id: "connection", name: "Connection" },

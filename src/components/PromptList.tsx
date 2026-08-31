@@ -1,4 +1,6 @@
 import type { Prompt } from "../lib/promptStore";
+import { useState } from "react";
+import { categoryStore } from "../lib/categoryStore";
 import type { PromptAgent } from "../lib/agentStore";
 
 export type SortKey = "recent" | "used" | "rated" | "title";
@@ -38,6 +40,8 @@ export function PromptList({
   onSelect,
   onNew,
 }: Props) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
   return (
     <section className="panel list-panel">
       <div className="panel-head">
@@ -78,6 +82,48 @@ export function PromptList({
               {category}
             </button>
           ))}
+
+          {adding ? (
+            <form
+              className="chip-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const created = categoryStore.create(draft);
+                if (created) onCategoryChange(created);
+                setDraft("");
+                setAdding(false);
+              }}
+            >
+              <input
+                className="chip-input"
+                aria-label="New category name"
+                placeholder="Category name"
+                autoFocus
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setDraft("");
+                    setAdding(false);
+                  }
+                }}
+                onBlur={() => {
+                  if (!draft.trim()) setAdding(false);
+                }}
+              />
+              <button className="chip chip-add" type="submit" disabled={!draft.trim()}>
+                Add
+              </button>
+            </form>
+          ) : (
+            <button
+              className="chip chip-add"
+              title="Create a category"
+              onClick={() => setAdding(true)}
+            >
+              + New
+            </button>
+          )}
         </div>
 
         <select
