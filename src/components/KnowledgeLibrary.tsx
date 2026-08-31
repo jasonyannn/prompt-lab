@@ -28,6 +28,7 @@ export function KnowledgeLibrary({
   const [items, setItems] = useState<KnowledgeItem[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     if (!agent) {
@@ -95,6 +96,7 @@ export function KnowledgeLibrary({
     setError(null);
     try {
       await knowledgeStore.remove(item.id);
+      setConfirmRemoveId(null);
       onAttachmentsChange(
         attachments.filter((attachment) => attachment.id !== item.id)
       );
@@ -155,12 +157,20 @@ export function KnowledgeLibrary({
                 </button>
                 <button
                   type="button"
-                  className="knowledge-remove"
-                  aria-label={`Remove ${item.name} from ${agent.name}'s knowledge`}
+                  className={`knowledge-remove${confirmRemoveId === item.id ? " is-confirm" : ""}`}
+                  aria-label={
+                    confirmRemoveId === item.id
+                      ? `Confirm removal of ${item.name}`
+                      : `Remove ${item.name} from ${agent.name}'s knowledge`
+                  }
+                  title={confirmRemoveId === item.id ? "Click again to remove" : "Remove"}
                   disabled={busy}
-                  onClick={() => void remove(item)}
+                  onClick={() => {
+                    if (confirmRemoveId === item.id) void remove(item);
+                    else setConfirmRemoveId(item.id);
+                  }}
                 >
-                  ×
+                  {confirmRemoveId === item.id ? "✓" : "×"}
                 </button>
               </li>
             );

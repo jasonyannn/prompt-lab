@@ -323,6 +323,10 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
     execute: async (input) => {
       try {
         const agentId = str(input, "agent_id");
+        if (agentId && !agentStore.get(agentId)) {
+          logActivity("list_agent_knowledge", input, `No agent with id ${agentId}`, false);
+          return fail(`No agent found with id "${agentId}".`);
+        }
         const items = agentId
           ? await knowledgeStore.getForAgent(agentId)
           : await knowledgeStore.getAll();
