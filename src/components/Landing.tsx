@@ -193,6 +193,15 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                     ? `WebMCP Ready · ${webmcp.tools.length}`
                     : "MCP endpoint offline"}
             </span>
+            {user ? (
+              <a className="btn btn-quiet" href="#signin">
+                {user.email ?? "Account"}
+              </a>
+            ) : (
+              <a className="btn btn-quiet" href="#signin">
+                Sign in
+              </a>
+            )}
             <button className="btn btn-primary" onClick={onEnter}>
               Open the app
             </button>
@@ -250,6 +259,72 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
               <dd className="stat-protocol">2026</dd>
             </div>
           </dl>
+        </Section>
+
+        {/* Sign in --------------------------------------------------- */}
+        <Section className="signin-section">
+            <div className="signin-card" id="signin">
+              {checking ? (
+                <p className="signin-note">Checking your session…</p>
+              ) : user ? (
+                <>
+                  <strong>Signed in as {user.email ?? "your account"}</strong>
+                  <p className="signin-note">
+                    Your forum posts will be published under this account. You can
+                    sign out from inside the app at any time.
+                  </p>
+                  <div className="signin-row">
+                    <button className="btn btn-primary" onClick={onEnter}>
+                        Open the app →
+                    </button>
+                    <button className="btn btn-quiet" onClick={() => void signOut()}>
+                        Sign out
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <strong>Sign in or create an account</strong>
+                  <p className="signin-note">
+                    Optional — everything in Prompt Lab works signed out, and you
+                    can post to the forum anonymously. Signing in just lets posts
+                    carry your name. We email you a link; there is no password.
+                  </p>
+                  <form
+                    className="signin-row"
+                    onSubmit={(event) => {
+                        event.preventDefault();
+                        void submitSignIn();
+                    }}
+                  >
+                    <input
+                        className="input"
+                        type="email"
+                        autoComplete="email"
+                        aria-label="Email address"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                    />
+                    <button
+                        className="btn btn-primary"
+                        type="submit"
+                        disabled={authState.kind === "sending"}
+                    >
+                        {authState.kind === "sending" ? "Sending…" : "Email me a link"}
+                    </button>
+                  </form>
+                </>
+              )}
+              {"text" in authState && (
+                <p
+                  className={`signin-note${authState.kind === "error" ? " is-bad" : " is-good"}`}
+                  role="status"
+                >
+                  {authState.text}
+                </p>
+              )}
+            </div>
         </Section>
 
         {/* Remote MCP ------------------------------------------------ */}
@@ -412,69 +487,6 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
             browser-native WebMCP in a supported browser, or run the optional
             local Llama agent inside the app.
           </p>
-          <div className="signin-card" id="signin">
-            {checking ? (
-              <p className="signin-note">Checking your session…</p>
-            ) : user ? (
-              <>
-                <strong>Signed in as {user.email ?? "your account"}</strong>
-                <p className="signin-note">
-                  Your forum posts will be published under this account. You can
-                  sign out from inside the app at any time.
-                </p>
-                <div className="signin-row">
-                  <button className="btn btn-primary" onClick={onEnter}>
-                    Open the app →
-                  </button>
-                  <button className="btn btn-quiet" onClick={() => void signOut()}>
-                    Sign out
-                  </button>
-                </div>
-              </>
-            ) : (
-              <>
-                <strong>Sign in to publish under your name</strong>
-                <p className="signin-note">
-                  Optional — everything in Prompt Lab works signed out, and you
-                  can post to the forum anonymously. Signing in just lets posts
-                  carry your name. We email you a link; there is no password.
-                </p>
-                <form
-                  className="signin-row"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void submitSignIn();
-                  }}
-                >
-                  <input
-                    className="input"
-                    type="email"
-                    autoComplete="email"
-                    aria-label="Email address"
-                    placeholder="you@example.com"
-                    value={email}
-                    onChange={(event) => setEmail(event.target.value)}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    type="submit"
-                    disabled={authState.kind === "sending"}
-                  >
-                    {authState.kind === "sending" ? "Sending…" : "Email me a link"}
-                  </button>
-                </form>
-              </>
-            )}
-            {"text" in authState && (
-              <p
-                className={`signin-note${authState.kind === "error" ? " is-bad" : " is-good"}`}
-                role="status"
-              >
-                {authState.text}
-              </p>
-            )}
-          </div>
-
           <button className="btn btn-primary btn-lg" onClick={onEnter}>
             Open the app →
           </button>
