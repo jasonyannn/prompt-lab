@@ -162,12 +162,14 @@ export async function chat(
 
     for (const call of calls) {
       const args = safeParse(call.arguments);
-      const result = await executeTool(call.name, args, "local");
-      const rendered = result.content
-        .map((part) =>
-          part.type === "text" ? part.text : `[Image attachment: ${part.mimeType}]`
-        )
-        .join("\n");
+      const staged = progress.intercept?.(call.name, args) ?? null;
+      const rendered =
+        staged ??
+        (await executeTool(call.name, args, "local")).content
+          .map((part) =>
+            part.type === "text" ? part.text : `[Image attachment: ${part.mimeType}]`
+          )
+          .join("\n");
 
       input.push({
         type: "function_call_output",

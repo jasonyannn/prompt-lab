@@ -18,6 +18,9 @@ import { AttachmentPicker } from "./AttachmentPicker";
 import { KnowledgeLibrary } from "./KnowledgeLibrary";
 import { chat as chatWithHostedModel } from "../lib/chatgpt";
 import { useModel } from "../hooks/useModel";
+import { useCategories } from "../hooks/useCategories";
+import { promptStore } from "../lib/promptStore";
+import { categoryStore } from "../lib/categoryStore";
 
 const SUGGESTIONS = [
   "I'm building a design AI app. What prompts should I create?",
@@ -29,9 +32,23 @@ type Props = { agents: PromptAgent[] };
 
 type Provider = "hosted" | "ollama";
 
+/** A prompt the agent wants to create, held back until the user approves it. */
+type Proposal = {
+  id: string;
+  title: string;
+  content: string;
+  category: string;
+  selected: boolean;
+};
+
 export function AgentChat({ agents }: Props) {
   const hosted = useModel();
+  const { categories } = useCategories();
   const [provider, setProvider] = useState<Provider>("hosted");
+  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [saveCategory, setSaveCategory] = useState<string | null>(null);
+  const [newCategory, setNewCategory] = useState("");
+  const [addingCategory, setAddingCategory] = useState(false);
   const [status, setStatus] = useState<OllamaStatus>({ state: "checking" });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -96,6 +113,23 @@ export function AgentChat({ agents }: Props) {
     try {
       const run = provider === "hosted" ? chatWithHostedModel : chatWithOllama;
       const added = await run(next, {
+        intercept: (name, args) => {
+          if (name !== "create_prompt") return null;
+          const title = typeof args.title === "string" ? args.title : "";
+          const content = typeof args.content === "string" ? args.content : "";
+          if (!title || !content) return null;
+
+          const category =
+            typeof args.category === "string" && args.category
+              ? args.category
+              : activeAgent?.defaultCategory ?? "General";
+
+          setProposals((current) => [
+            ...current,
+            { id: crypto.randomUUID(), title, content, category, selected: true },
+          ]);
+          return `Proposed "${title}" to the user. It is NOT saved yet — the user picks which prompts to keep and which category they go in. Do not call create_prompt again for this prompt.`;
+        },
         agent: activeAgent,
         onAssistant: (message) => setMessages((prev) => [...prev, message]),
         onToolCall: (name, _input, result) =>
@@ -111,6 +145,31 @@ export function AgentChat({ agents }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  function toggleProposal(id: string) {
+    setProposals((current) =>
+      current.map((item) =>
+        item.id === id ? { ...item, selected: !item.selected } : item
+      )
+    );
+  }
+
+  function saveProposals(which: Proposal[]) {
+    if (which.length === 0) return;
+    const category = saveCategory ?? activeAgent?.defaultCategory ?? "General";
+    categoryStore.ensure(category);
+    // Reversed so the first proposal ends up on top of a recency-sorted library.
+    for (const item of [...which].reverse()) {
+      promptStore.create({
+        title: item.title,
+        content: item.content,
+        category,
+        agentId: activeAgent?.id,
+      });
+    }
+    const savedIds = new Set(which.map((item) => item.id));
+    setProposals((current) => current.filter((item) => !savedIds.has(item.id)));
   }
 
   function applyModel(value: string) {
@@ -259,6 +318,106 @@ export function AgentChat({ agents }: Props) {
         {busy && <div className="bubble-tool">thinking…</div>}
         {error && <div className="notice is-bad">{error}</div>}
       </div>
+
+      {proposals.length > 0 && (
+        <div className="proposal-tray">
+          <div className="proposal-head">
+            <strong>
+              {proposals.length} prompt{proposals.length === 1 ? "" : "s"} ready to save
+            </strong>
+            <span>Tick the ones you want, then choose a category.</span>
+          </div>
+
+          <ul className="proposal-list">
+            {proposals.map((item) => (
+              <li key={item.id}>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={item.selected}
+                    onChange={() => toggleProposal(item.id)}
+                  />
+                  <span className="proposal-copy">
+                    <strong title={item.title}>{item.title}</strong>
+                    <small>{item.content.slice(0, 90)}…</small>
+                  </span>
+                </label>
+              </li>
+            ))}
+          </ul>
+
+          <div className="proposal-category">
+            <label className="save-into">
+              <span>Save into</span>
+              <select
+                className="select"
+                value={saveCategory ?? activeAgent?.defaultCategory ?? "General"}
+                onChange={(event) => setSaveCategory(event.target.value)}
+              >
+                {!categories.includes(
+                  saveCategory ?? activeAgent?.defaultCategory ?? "General"
+                ) && (
+                  <option>
+                    {saveCategory ?? activeAgent?.defaultCategory ?? "General"}
+                  </option>
+                )}
+                {categories.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {addingCategory ? (
+              <form
+                className="predict-category-form"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  const created = categoryStore.create(newCategory);
+                  if (created) setSaveCategory(created);
+                  setNewCategory("");
+                  setAddingCategory(false);
+                }}
+              >
+                <input
+                  className="input"
+                  aria-label="New category name"
+                  placeholder="e.g. Dating"
+                  value={newCategory}
+                  onChange={(event) => setNewCategory(event.target.value)}
+                />
+                <button className="btn" type="submit" disabled={!newCategory.trim()}>
+                  Add
+                </button>
+              </form>
+            ) : (
+              <button
+                className="btn btn-ghost predict-add-category"
+                onClick={() => setAddingCategory(true)}
+              >
+                + New category
+              </button>
+            )}
+          </div>
+
+          <div className="proposal-actions">
+            <button
+              className="btn btn-primary"
+              disabled={proposals.every((item) => !item.selected)}
+              onClick={() => saveProposals(proposals.filter((item) => item.selected))}
+            >
+              Save selected ({proposals.filter((item) => item.selected).length})
+            </button>
+            <button className="btn" onClick={() => saveProposals(proposals)}>
+              Save all
+            </button>
+            <div className="topbar-spacer" />
+            <button className="btn btn-ghost" onClick={() => setProposals([])}>
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
 
       {!usingHosted && !hasModel && (
         <p className="hint" style={{ padding: "0 14px" }}>
