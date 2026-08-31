@@ -32,6 +32,21 @@ type Props = { agents: PromptAgent[] };
 
 type Provider = "hosted" | "ollama";
 
+/**
+ * Does this reply look like a list of prompts the user might want to keep?
+ *
+ * Clarifying questions are also numbered, so a bare list check offers the
+ * rescue at exactly the wrong moment. Requiring more list items than question
+ * marks separates "here are 6 prompts" from "here are 3 questions".
+ */
+function listsPrompts(text: string) {
+  const items = text
+    .split("\n")
+    .filter((line) => /^\s*(\d+[).]|[-*•])\s+\S/.test(line)).length;
+  const questions = (text.match(/\?/g) ?? []).length;
+  return items >= 2 && items > questions;
+}
+
 /** A prompt the agent wants to create, held back until the user approves it. */
 type Proposal = {
   id: string;
@@ -179,9 +194,8 @@ export function AgentChat({ agents }: Props) {
 
   const usingHosted = provider === "hosted" && hosted.ready;
   const lastReply = messages[messages.length - 1];
-  const lastReplyHasText = Boolean(
-    lastReply?.role === "assistant" && lastReply.content?.trim()
-  );
+  const lastReplyHasText =
+    lastReply?.role === "assistant" && listsPrompts(lastReply.content ?? "");
 
   if (hosted.checking && status.state === "checking") {
     return (
@@ -346,8 +360,26 @@ export function AgentChat({ agents }: Props) {
             <strong>
               {proposals.length} prompt{proposals.length === 1 ? "" : "s"} ready to save
             </strong>
-            <span>Tick the ones you want, then choose a category.</span>
+            <span>
+              Save one from its row, or tick several and choose a category.
+            </span>
           </div>
+
+          {proposals.length > 1 && (
+            <button
+              className="proposal-select-all"
+              onClick={() => {
+                const selectAll = proposals.some((item) => !item.selected);
+                setProposals((current) =>
+                  current.map((item) => ({ ...item, selected: selectAll }))
+                );
+              }}
+            >
+              {proposals.some((item) => !item.selected)
+                ? "Select all"
+                : "Clear selection"}
+            </button>
+          )}
 
           <ul className="proposal-list">
             {proposals.map((item) => (
@@ -363,6 +395,13 @@ export function AgentChat({ agents }: Props) {
                     <small>{item.content.slice(0, 90)}…</small>
                   </span>
                 </label>
+                <button
+                  className="btn btn-ghost proposal-save-one"
+                  title={`Save only "${item.title}"`}
+                  onClick={() => saveProposals([item])}
+                >
+                  Save
+                </button>
               </li>
             ))}
           </ul>

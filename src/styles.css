@@ -2561,19 +2561,27 @@ select {
   list-style: none;
 }
 
-.proposal-list label {
+.proposal-list li {
   display: flex;
-  align-items: flex-start;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
   padding: 7px 8px;
   border: 1px solid var(--line-soft);
   border-radius: 8px;
   background: var(--bg);
-  cursor: pointer;
 }
 
-.proposal-list label:hover {
+.proposal-list li:hover {
   border-color: var(--line);
+}
+
+.proposal-list label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  cursor: pointer;
 }
 
 .proposal-list input {
@@ -2601,6 +2609,27 @@ select {
   font-size: 10px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.proposal-save-one {
+  flex: none;
+  padding: 3px 9px;
+  font-size: 11px;
+}
+
+.proposal-select-all {
+  align-self: start;
+  margin-bottom: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.proposal-select-all:hover {
+  text-decoration: underline;
 }
 
 .proposal-category {
