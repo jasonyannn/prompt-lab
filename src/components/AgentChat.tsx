@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import {
-  chat,
+  chat as chatWithOllama,
   checkOllama,
   DEFAULT_MODEL,
   getModel,
@@ -16,6 +16,8 @@ import {
 } from "../lib/attachments";
 import { AttachmentPicker } from "./AttachmentPicker";
 import { KnowledgeLibrary } from "./KnowledgeLibrary";
+import { chat as chatWithHostedModel } from "../lib/chatgpt";
+import { useModel } from "../hooks/useModel";
 
 const SUGGESTIONS = [
   "I'm building a design AI app. What prompts should I create?",
@@ -25,7 +27,11 @@ const SUGGESTIONS = [
 
 type Props = { agents: PromptAgent[] };
 
+type Provider = "hosted" | "ollama";
+
 export function AgentChat({ agents }: Props) {
+  const hosted = useModel();
+  const [provider, setProvider] = useState<Provider>("hosted");
   const [status, setStatus] = useState<OllamaStatus>({ state: "checking" });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -40,6 +46,10 @@ export function AgentChat({ agents }: Props) {
   useEffect(() => {
     void checkOllama().then(setStatus);
   }, []);
+
+  useEffect(() => {
+    if (!hosted.checking && !hosted.ready) setProvider("ollama");
+  }, [hosted.checking, hosted.ready]);
 
   useEffect(() => {
     if (agentId && agents.some((agent) => agent.id === agentId)) return;
@@ -84,7 +94,8 @@ export function AgentChat({ agents }: Props) {
     setBusy(true);
 
     try {
-      const added = await chat(next, {
+      const run = provider === "hosted" ? chatWithHostedModel : chatWithOllama;
+      const added = await run(next, {
         agent: activeAgent,
         onAssistant: (message) => setMessages((prev) => [...prev, message]),
         onToolCall: (name, _input, result) =>
@@ -107,7 +118,17 @@ export function AgentChat({ agents }: Props) {
     setModel(value);
   }
 
-  if (status.state === "checking") {
+  const usingHosted = provider === "hosted" && hosted.ready;
+
+  if (hosted.checking && status.state === "checking") {
+    return (
+      <div className="panel-body">
+        <p className="empty">Connecting to the agent…</p>
+      </div>
+    );
+  }
+
+  if (!usingHosted && status.state === "checking") {
     return (
       <div className="panel-body">
         <p className="empty">Looking for Ollama…</p>
@@ -115,7 +136,7 @@ export function AgentChat({ agents }: Props) {
     );
   }
 
-  if (status.state === "unavailable") {
+  if (!usingHosted && status.state === "unavailable") {
     return (
       <div className="panel-body">
         <div className="notice">
@@ -140,10 +161,38 @@ export function AgentChat({ agents }: Props) {
     );
   }
 
-  const hasModel = status.models.some((name) => name.startsWith(model));
+  const hasModel =
+    status.state === "ready" && status.models.some((name) => name.startsWith(model));
 
   return (
     <div className="chat">
+      {hosted.ready && (
+        <div className="provider-row">
+          <div className="engine-toggle" role="group" aria-label="Agent model">
+            <button
+              type="button"
+              className={provider === "hosted" ? "is-active" : ""}
+              aria-pressed={provider === "hosted"}
+              onClick={() => setProvider("hosted")}
+            >
+              {hosted.model}
+            </button>
+            <button
+              type="button"
+              className={provider === "ollama" ? "is-active" : ""}
+              aria-pressed={provider === "ollama"}
+              onClick={() => setProvider("ollama")}
+            >
+              Local
+            </button>
+          </div>
+          <span className="hint no-margin">
+            {usingHosted
+              ? "Hosted — runs anywhere, including the deployed site."
+              : "Local Ollama — for testing on this machine."}
+          </span>
+        </div>
+      )}
       <div className="chat-log" ref={scrollRef}>
         {messages.length === 0 && (
           <div className="chat-intro">
@@ -211,7 +260,7 @@ export function AgentChat({ agents }: Props) {
         {error && <div className="notice is-bad">{error}</div>}
       </div>
 
-      {!hasModel && (
+      {!usingHosted && !hasModel && (
         <p className="hint" style={{ padding: "0 14px" }}>
           Model <code>{model}</code> not found. Run{" "}
           <code>ollama pull {model}</code>.
@@ -274,16 +323,25 @@ export function AgentChat({ agents }: Props) {
       </form>
 
       <div className="chat-foot">
-        <input
-          className="model-input"
-          value={model}
-          onChange={(event) => applyModel(event.target.value)}
-          aria-label="Ollama model"
-          placeholder={DEFAULT_MODEL}
-        />
-        <span className="hint" style={{ margin: 0 }}>
-          {status.models.length} model{status.models.length === 1 ? "" : "s"} local
-        </span>
+        {usingHosted ? (
+          <span className="hint" style={{ margin: 0 }}>
+            Running on {hosted.model}
+          </span>
+        ) : (
+          <>
+            <input
+              className="model-input"
+              value={model}
+              onChange={(event) => applyModel(event.target.value)}
+              aria-label="Ollama model"
+              placeholder={DEFAULT_MODEL}
+            />
+            <span className="hint" style={{ margin: 0 }}>
+              {status.state === "ready" ? status.models.length : 0} model
+              {status.state === "ready" && status.models.length === 1 ? "" : "s"} local
+            </span>
+          </>
+        )}
         {messages.length > 0 && (
           <button
             className="btn btn-ghost"

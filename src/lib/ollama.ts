@@ -139,7 +139,7 @@ Rules:
 - For interface screenshots, inspect the image with vision before generating or saving screenshot-workflow prompts.
 - Keep replies short. The prompt library is visible on screen, so do not repeat full prompt text back unless asked.`;
 
-function systemPrompt(agent?: PromptAgent) {
+export function systemPrompt(agent?: PromptAgent) {
   if (!agent) return BASE_SYSTEM_PROMPT;
   return `${BASE_SYSTEM_PROMPT}
 

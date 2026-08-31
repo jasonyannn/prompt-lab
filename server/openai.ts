@@ -248,3 +248,78 @@ export function parseGenerateRequest(body: unknown): GenerateRequest | string {
       : [],
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * Chat (tool-calling)
+ * ------------------------------------------------------------------ */
+
+/**
+ * A stateless pass-through to the Responses API.
+ *
+ * The agent loop itself stays in the browser, because Prompt Lab's tools act on
+ * the user's local library. The server only forwards the conversation and hands
+ * back whatever the model produced — a message, tool calls, or both.
+ */
+export type ChatRequest = {
+  instructions: string;
+  /** Responses API input items, built by the client. */
+  input: unknown[];
+  /** Function tool definitions, mapped from the WebMCP descriptors. */
+  tools: unknown[];
+};
+
+export function parseChatRequest(body: unknown): ChatRequest | string {
+  const input = body as Partial<ChatRequest> | null;
+  if (!input || typeof input !== "object") return "Expected a JSON body.";
+  if (typeof input.instructions !== "string") return "`instructions` is required.";
+  if (!Array.isArray(input.input) || input.input.length === 0) {
+    return "`input` must be a non-empty array.";
+  }
+  if (input.input.length > 200) return "Conversation is too long.";
+  if (!Array.isArray(input.tools)) return "`tools` must be an array.";
+
+  return {
+    instructions: input.instructions.slice(0, 20_000),
+    input: input.input,
+    tools: input.tools,
+  };
+}
+
+export async function chatWithModel(
+  request: ChatRequest,
+  config: ModelConfig,
+  signal?: AbortSignal
+): Promise<{ output: unknown[]; model: string }> {
+  const model = config.model || DEFAULT_MODEL;
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    signal,
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      instructions: request.instructions,
+      input: request.input,
+      tools: request.tools,
+      reasoning: { effort: config.effort || DEFAULT_EFFORT },
+      max_output_tokens: 4000,
+    }),
+  });
+
+  const payload = (await response.json()) as {
+    error?: { message?: string };
+    output?: unknown[];
+    model?: string;
+  };
+
+  if (!response.ok || payload.error) {
+    throw new Error(
+      payload.error?.message || `The model request failed (${response.status}).`
+    );
+  }
+
+  return { output: payload.output ?? [], model: payload.model || model };
+}
