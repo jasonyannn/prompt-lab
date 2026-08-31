@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   getSessionUser,
-  signInWithEmail,
+  signInWithEmailPassword,
   signOut as signOutRequest,
+  signUpWithEmailPassword,
   subscribeToAuthState,
   type SessionUser,
 } from "../lib/forum";
@@ -38,8 +39,12 @@ export function useAuth() {
     };
   }, []);
 
-  const signIn = useCallback(async (email: string) => {
-    await signInWithEmail(email.trim());
+  const signIn = useCallback(async (email: string, password: string) => {
+    await signInWithEmailPassword(email.trim(), password);
+  }, []);
+
+  const signUp = useCallback(async (email: string, password: string) => {
+    await signUpWithEmailPassword(email.trim(), password);
   }, []);
 
   const signOut = useCallback(async () => {
@@ -47,5 +52,5 @@ export function useAuth() {
     setUser(null);
   }, []);
 
-  return { user, checking, signIn, signOut };
+  return { user, checking, signIn, signUp, signOut };
 }
