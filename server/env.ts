@@ -11,4 +11,8 @@ export type Env = {
    * project settings, not in a committed file.
    */
   OPENAI_API_KEY?: string;
+  /** Overrides the default model id. */
+  OPENAI_MODEL?: string;
+  /** Reasoning effort: none, low, medium, high or xhigh. */
+  OPENAI_REASONING_EFFORT?: string;
 };
