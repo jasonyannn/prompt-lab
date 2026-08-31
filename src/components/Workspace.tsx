@@ -12,6 +12,7 @@ import { PromptDetail } from "./PromptDetail";
 import { NewPromptForm } from "./NewPromptForm";
 import { PromptStudio } from "./PromptStudio";
 import { Discover } from "./Discover";
+import { Forum } from "./Forum";
 import type { WebMCPState } from "../hooks/useWebMCP";
 import type { RemoteMCPState } from "../hooks/useRemoteMCP";
 
@@ -27,7 +28,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   const { prompts } = usePrompts();
   const { agents } = useAgents();
   const { categories: savedCategories } = useCategories();
-  const [view, setView] = useState<"discover" | "library" | "studio">(
+  const [view, setView] = useState<"discover" | "library" | "studio" | "forum">(
     "discover"
   );
   const [query, setQuery] = useState("");
@@ -184,6 +185,12 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
           >
             Prompt Studio
           </button>
+          <button
+            className={view === "forum" ? "is-active" : ""}
+            onClick={() => setView("forum")}
+          >
+            Forum
+          </button>
         </nav>
 
         <div className="topbar-spacer" />
@@ -219,6 +226,8 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
         <Discover onOpenPrompt={openInLibrary} />
       ) : view === "studio" ? (
         <PromptStudio onOpenPrompt={openInLibrary} />
+      ) : view === "forum" ? (
+        <Forum />
       ) : <div className="columns">
         <PromptList
           prompts={visible}
