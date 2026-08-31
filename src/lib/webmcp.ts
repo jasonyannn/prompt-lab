@@ -100,8 +100,8 @@ export function isWebMCPAvailable(): boolean {
  * Agent activity log
  * ------------------------------------------------------------------ */
 
-/** Where a tool call came from: the browser's agent, or the built-in local model. */
-export type ActivitySource = "webmcp" | "local";
+/** Where a tool call came from: a page agent, remote agent, or local model. */
+export type ActivitySource = "webmcp" | "remote" | "local";
 
 export type ActivityEntry = {
   id: string;
@@ -159,6 +159,18 @@ function logActivity(
 
 export function clearActivity() {
   activity = [];
+  listeners.forEach((listener) => listener(activity));
+}
+
+/** Merge durable Streamable HTTP calls into the same live activity feed. */
+export function mergeRemoteActivity(entries: ActivityEntry[]) {
+  const byId = new Map<string, ActivityEntry>();
+  for (const entry of [...entries, ...activity]) {
+    if (!byId.has(entry.id)) byId.set(entry.id, entry);
+  }
+  activity = [...byId.values()]
+    .sort((a, b) => b.at.localeCompare(a.at))
+    .slice(0, MAX_ACTIVITY);
   listeners.forEach((listener) => listener(activity));
 }
 

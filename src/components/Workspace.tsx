@@ -12,13 +12,15 @@ import { PromptDetail } from "./PromptDetail";
 import { NewPromptForm } from "./NewPromptForm";
 import { PromptStudio } from "./PromptStudio";
 import type { WebMCPState } from "../hooks/useWebMCP";
+import type { RemoteMCPState } from "../hooks/useRemoteMCP";
 
 type Props = {
   webmcp: WebMCPState;
+  remoteMcp: RemoteMCPState;
   onHome: () => void;
 };
 
-export function Workspace({ webmcp, onHome }: Props) {
+export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   const { ready, supported, tools, activity, clearActivity } = webmcp;
 
   const { prompts } = usePrompts();
@@ -189,7 +191,13 @@ export function Workspace({ webmcp, onHome }: Props) {
           }}
         />
 
-        <WebMCPStatus ready={ready} supported={supported} toolCount={tools.length} />
+        <WebMCPStatus
+          ready={ready}
+          supported={supported}
+          toolCount={tools.length}
+          remoteReady={remoteMcp.ready}
+          remoteToolCount={remoteMcp.tools.length}
+        />
       </header>
 
       {view === "studio" ? (
