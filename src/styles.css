@@ -1327,6 +1327,149 @@ select {
   color: var(--bad);
 }
 
+.forum-panel {
+  margin-top: 20px;
+}
+
+.forum-auth-box,
+.forum-compose {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.forum-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--text-faint);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.forum-divider::before,
+.forum-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.forum-auth-box p,
+.forum-compose p {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.forum-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.forum-list {
+  display: grid;
+  gap: 12px;
+}
+
+.forum-post {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+
+.forum-post-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.forum-post-content {
+  position: relative;
+}
+
+.forum-post pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text);
+  background: rgba(11, 13, 18, 0.55);
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  padding: 12px 38px 12px 12px;
+}
+
+.copy-button {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(18, 21, 29, 0.9);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.copy-button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.forum-post-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--text-faint);
+}
+
+.forum-post-tools {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.like-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.like-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.like-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;

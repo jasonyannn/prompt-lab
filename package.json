@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/server": "^2.0.0",
+    "@supabase/supabase-js": "^2.112.4",
     "drizzle-orm": "^0.45.2",
     "mammoth": "^1.12.2",
     "pdfjs-dist": "^4.10.38",
