@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useWebMCP } from "./hooks/useWebMCP";
+import { useRemoteMCP } from "./hooks/useRemoteMCP";
 import { Landing } from "./components/Landing";
 import { Workspace } from "./components/Workspace";
 
@@ -16,6 +17,7 @@ export default function App() {
    * page too, not just inside the workspace.
    */
   const webmcp = useWebMCP();
+  const remoteMcp = useRemoteMCP();
 
   const [route, setRoute] = useState<Route>(routeFromHash);
 
@@ -31,8 +33,20 @@ export default function App() {
   }, []);
 
   if (route === "app") {
-    return <Workspace webmcp={webmcp} onHome={() => go("landing")} />;
+    return (
+      <Workspace
+        webmcp={webmcp}
+        remoteMcp={remoteMcp}
+        onHome={() => go("landing")}
+      />
+    );
   }
 
-  return <Landing webmcp={webmcp} onEnter={() => go("app")} />;
+  return (
+    <Landing
+      webmcp={webmcp}
+      remoteMcp={remoteMcp}
+      onEnter={() => go("app")}
+    />
+  );
 }

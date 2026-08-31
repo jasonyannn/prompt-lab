@@ -53,10 +53,16 @@ export function AgentActivity({ activity, tools, onClear }: Props) {
                 title={
                   entry.source === "webmcp"
                     ? "Called through document.modelContext by the browser's agent"
-                    : "Called by the built-in local model"
+                    : entry.source === "remote"
+                      ? "Called by an external agent through the Streamable HTTP MCP endpoint"
+                      : "Called by the built-in local model"
                 }
               >
-                {entry.source === "webmcp" ? "WebMCP" : "local"}
+                {entry.source === "webmcp"
+                  ? "WebMCP"
+                  : entry.source === "remote"
+                    ? "remote MCP"
+                    : "local"}
               </span>
             </div>
           ))
@@ -73,7 +79,7 @@ export function AgentActivity({ activity, tools, onClear }: Props) {
           ))}
         </div>
         <p className="hint">
-          Exposed via <code>document.modelContext.registerTool()</code>
+          Exposed in-page and through the remote <code>/mcp</code> endpoint.
         </p>
       </div>
     </>
