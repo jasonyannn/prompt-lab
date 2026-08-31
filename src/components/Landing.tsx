@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { PROMPT_TOOLS } from "../lib/webmcp";
 import type { WebMCPState } from "../hooks/useWebMCP";
+import type { RemoteMCPState } from "../hooks/useRemoteMCP";
 
 type Props = {
   webmcp: WebMCPState;
+  remoteMcp: RemoteMCPState;
   onEnter: () => void;
 };
 
@@ -19,18 +21,18 @@ const SNIPPET = `document.modelContext.registerTool({
 const STEPS = [
   {
     n: "01",
-    title: "The page declares its tools",
-    body: "On load, Prompt Lab registers its typed tools against the browser's own model context. No plugin, no server, no bespoke protocol.",
+    title: "Connect from anywhere",
+    body: "Give an external agent the /mcp URL. It discovers a typed Streamable HTTP tool surface without opening or clicking through the interface.",
   },
   {
     n: "02",
-    title: "Your agent discovers them",
-    body: "Any WebMCP-capable agent reads the schemas and calls them directly — with the same permissions, session and data you already have on the page.",
+    title: "Work with a living library",
+    body: "Agents can search, create, render, version and compare prompts in a durable shared library. Older versions are preserved instead of overwritten.",
   },
   {
     n: "03",
-    title: "The interface answers back",
-    body: "Every call mutates the live store, so the UI updates as you watch. The Activity feed shows each call, labelled by who made it.",
+    title: "See who came in",
+    body: "Remote calls are recorded in the Activity feed alongside browser-native WebMCP and the built-in local agent, so every path stays observable.",
   },
 ];
 
@@ -93,9 +95,10 @@ function Section({
   );
 }
 
-export function Landing({ webmcp, onEnter }: Props) {
+export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
   const [openTool, setOpenTool] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [copiedEndpoint, setCopiedEndpoint] = useState(false);
 
   async function copySnippet() {
     try {
@@ -104,6 +107,16 @@ export function Landing({ webmcp, onEnter }: Props) {
       window.setTimeout(() => setCopied(false), 1600);
     } catch {
       /* clipboard can be blocked; the code is visible on screen regardless */
+    }
+  }
+
+  async function copyEndpoint() {
+    try {
+      await navigator.clipboard.writeText(remoteMcp.endpoint);
+      setCopiedEndpoint(true);
+      window.setTimeout(() => setCopiedEndpoint(false), 1600);
+    } catch {
+      /* The endpoint remains visible and selectable when clipboard access is blocked. */
     }
   }
 
@@ -120,6 +133,7 @@ export function Landing({ webmcp, onEnter }: Props) {
           </div>
 
           <nav className="lp-links">
+            <a href="#connect">Connect</a>
             <a href="#tools">Tools</a>
             <a href="#how">How it works</a>
             <a
@@ -133,19 +147,23 @@ export function Landing({ webmcp, onEnter }: Props) {
 
           <div className="lp-nav-right">
             <span
-              className={`status ${webmcp.ready ? "is-ready" : "is-off"}`}
+              className={`status ${remoteMcp.ready || webmcp.ready ? "is-ready" : "is-off"}`}
               title={
-                webmcp.ready
-                  ? `${webmcp.tools.length} tools registered on document.modelContext`
-                  : "This browser does not expose document.modelContext"
+                remoteMcp.ready
+                  ? `${remoteMcp.tools.length} tools available at ${remoteMcp.endpoint}`
+                  : webmcp.ready
+                    ? `${webmcp.tools.length} tools registered on document.modelContext`
+                    : "Checking the remote endpoint; browser WebMCP is unavailable"
               }
             >
               <span className="dot" />
-              {webmcp.ready
-                ? `WebMCP Ready · ${webmcp.tools.length}`
-                : webmcp.supported
-                  ? "Connecting…"
-                  : "WebMCP unavailable"}
+              {remoteMcp.ready
+                ? `Remote MCP Ready · ${remoteMcp.tools.length}`
+                : remoteMcp.checking || webmcp.supported
+                  ? "MCP connecting…"
+                  : webmcp.ready
+                    ? `WebMCP Ready · ${webmcp.tools.length}`
+                    : "MCP endpoint offline"}
             </span>
             <button className="btn btn-primary" onClick={onEnter}>
               Open the app
@@ -170,9 +188,9 @@ export function Landing({ webmcp, onEnter }: Props) {
 
           <p className="lede">
             Most web apps make an agent read pixels and guess at buttons. Prompt
-            Lab hands it a complete set of typed tools instead — registered on the browser's
-            native <code>document.modelContext</code>, so anything it can do, you
-            can watch it do.
+            Lab hands it typed tools instead — in the browser through native{" "}
+            <code>document.modelContext</code>, and over the web through a real{" "}
+            <code>/mcp</code> endpoint for external agents.
           </p>
 
           <div className="hero-cta">
@@ -182,22 +200,65 @@ export function Landing({ webmcp, onEnter }: Props) {
             <a className="btn btn-lg btn-quiet" href="#tools">
               Explore the tools
             </a>
+            <a className="btn btn-lg btn-quiet" href="#connect">
+              Connect an agent
+            </a>
           </div>
 
           <dl className="stat-row">
             <div>
-              <dt>Tools exposed</dt>
+              <dt>In-page tools</dt>
               <dd>{PROMPT_TOOLS.length}</dd>
             </div>
             <div>
-              <dt>Backend services</dt>
-              <dd>0</dd>
+              <dt>Remote tools</dt>
+              <dd>{remoteMcp.tools.length}</dd>
             </div>
             <div>
-              <dt>Agent lock-in</dt>
-              <dd>None</dd>
+              <dt>Protocol</dt>
+              <dd className="stat-protocol">2026</dd>
             </div>
           </dl>
+        </Section>
+
+        {/* Remote MCP ------------------------------------------------ */}
+        <Section className="remote-connect">
+          <div id="connect" className="remote-connect-copy">
+            <span className="kicker">Remote MCP</span>
+            <h3 className="section-title">Give any agent one URL.</h3>
+            <p className="section-sub">
+              External agents connect over standard Streamable HTTP and work
+              directly with Prompt Lab's durable shared library. No browser tab
+              or UI automation is required.
+            </p>
+          </div>
+
+          <div className="endpoint-card">
+            <div className="endpoint-head">
+              <span
+                className={`status ${remoteMcp.ready ? "is-ready" : "is-off"}`}
+              >
+                <span className="dot" />
+                {remoteMcp.ready
+                  ? "Endpoint online"
+                  : remoteMcp.checking
+                    ? "Checking endpoint…"
+                    : "Available after Sites deployment"}
+              </span>
+              <span>{remoteMcp.transport}</span>
+            </div>
+            <div className="endpoint-url-row">
+              <code>{remoteMcp.endpoint}</code>
+              <button className="btn btn-primary" onClick={copyEndpoint}>
+                {copiedEndpoint ? "Copied ✓" : "Copy URL"}
+              </button>
+            </div>
+            <div className="endpoint-meta">
+              <span>{remoteMcp.tools.length} remote tools</span>
+              <span>{remoteMcp.protocolVersions.join(" + ")}</span>
+              <span>Version history included</span>
+            </div>
+          </div>
         </Section>
 
         {/* Code ------------------------------------------------------- */}
@@ -316,9 +377,9 @@ export function Landing({ webmcp, onEnter }: Props) {
             <em>and watch it work.</em>
           </h3>
           <p className="lede">
-            Best in ChatGPT's in-app browser or Chrome 149+ with WebMCP enabled.
-            No agent handy? A local Llama 3.2 runs the same tools from inside the
-            app.
+            Connect an external agent to <code>{remoteMcp.endpoint}</code>, use
+            browser-native WebMCP in a supported browser, or run the optional
+            local Llama agent inside the app.
           </p>
           <button className="btn btn-primary btn-lg" onClick={onEnter}>
             Open the app →

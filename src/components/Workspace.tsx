@@ -11,6 +11,7 @@ import { PromptList, type SortKey } from "./PromptList";
 import { PromptDetail } from "./PromptDetail";
 import { NewPromptForm } from "./NewPromptForm";
 import { PromptStudio } from "./PromptStudio";
+import { Discover } from "./Discover";
 import type { WebMCPState } from "../hooks/useWebMCP";
 import type { RemoteMCPState } from "../hooks/useRemoteMCP";
 
@@ -26,7 +27,9 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   const { prompts } = usePrompts();
   const { agents } = useAgents();
   const { categories: savedCategories } = useCategories();
-  const [view, setView] = useState<"library" | "studio">("library");
+  const [view, setView] = useState<"discover" | "library" | "studio">(
+    "discover"
+  );
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [agentFilter, setAgentFilter] = useState("All");
@@ -147,6 +150,12 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
     }
   }
 
+  function openInLibrary(id: string) {
+    setSelectedId(id);
+    setCreating(false);
+    setView("library");
+  }
+
   return (
     <div className="app">
       <header className="topbar">
@@ -157,6 +166,12 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
         </button>
 
         <nav className="workspace-nav" aria-label="Workspace sections">
+          <button
+            className={view === "discover" ? "is-active" : ""}
+            onClick={() => setView("discover")}
+          >
+            Discover
+          </button>
           <button
             className={view === "library" ? "is-active" : ""}
             onClick={() => setView("library")}
@@ -200,14 +215,10 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
         />
       </header>
 
-      {view === "studio" ? (
-        <PromptStudio
-          onOpenPrompt={(id) => {
-            setSelectedId(id);
-            setCreating(false);
-            setView("library");
-          }}
-        />
+      {view === "discover" ? (
+        <Discover onOpenPrompt={openInLibrary} />
+      ) : view === "studio" ? (
+        <PromptStudio onOpenPrompt={openInLibrary} />
       ) : <div className="columns">
         <PromptList
           prompts={visible}

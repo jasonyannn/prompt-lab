@@ -4,6 +4,8 @@ export type Prompt = {
   content: string;
   category: string;
   agentId?: string;
+  /** Catalog prompt id, when this was saved from the public catalog. */
+  sourceId?: string;
   rating?: number;
   usageCount: number;
   createdAt: string;
@@ -117,6 +119,7 @@ export const promptStore = {
     content: string;
     category?: string;
     agentId?: string;
+    sourceId?: string;
   }): Prompt {
     const prompts = read();
 
@@ -126,6 +129,7 @@ export const promptStore = {
       content: input.content,
       category: input.category || "General",
       agentId: input.agentId,
+      sourceId: input.sourceId,
       usageCount: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
