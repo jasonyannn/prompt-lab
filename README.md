@@ -120,6 +120,30 @@ Browser and local tool calls are appended to an in-memory log. Remote calls are
 stored durably and polled into the same Agent Activity panel, so the interface
 labels all three sources.
 
+## Forum and user system
+
+Prompt Lab combines a local-first prompt library with a public forum backed by
+Supabase. The personal library remains browser-local and stores prompts in
+`localStorage`, while the forum persists public prompt posts and discussion data
+in the database.
+
+Users can sign in with email magic links, and signed-in authors appear in the
+forum using their authenticated profile name. If a user is not signed in, they
+can still publish an anonymous post; the UI then renders the post without a user
+identity instead of requiring an account.
+
+The forum stores author identity as `author_id`, and resolves the visible display
+name by joining to `public.profiles` through the user record. This keeps the
+author relationship stable without copying a user label into the post row.
+
+Likes are handled in two layers:
+
+- `forum_post_likes` records the per-user action for each post
+- `forum_post_like_totals` stores the computed aggregate count used by the UI
+
+This avoids writing the total count back onto the protected `forum_posts` row,
+while still giving the app a fast and reliable count for the like button.
+
 ## Features
 
 - **Document and image attachments** — drag in PDF, DOCX, text-based files, or
