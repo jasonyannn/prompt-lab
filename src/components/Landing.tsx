@@ -97,8 +97,9 @@ function Section({
 }
 
 export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
-  const { user, checking, signIn, signOut } = useAuth();
+  const { user, checking, signIn, signUp, signOut } = useAuth();
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const emailRef = useRef<HTMLInputElement>(null);
 
   /** Scroll to the card *and* focus the field, so one click is enough. */
@@ -107,27 +108,51 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
     // Focus once the smooth scroll settles, or it fights the animation.
     window.setTimeout(() => emailRef.current?.focus(), 420);
   }
+
   const [authState, setAuthState] = useState<
     { kind: "idle" | "sending" } | { kind: "sent" | "error"; text: string }
   >({ kind: "idle" });
 
   async function submitSignIn() {
     const address = email.trim();
-    if (!address) {
-      setAuthState({ kind: "error", text: "Enter your email address." });
+    if (!address || !password.trim()) {
+      setAuthState({ kind: "error", text: "Enter both your email and password." });
       return;
     }
     setAuthState({ kind: "sending" });
     try {
-      await signIn(address);
+      await signIn(address, password);
       setAuthState({
         kind: "sent",
-        text: `Sign-in link sent to ${address}. Open it on this device.`,
+        text: `Signed in as ${address}.`,
       });
+      setPassword("");
     } catch (caught) {
       setAuthState({
         kind: "error",
-        text: caught instanceof Error ? caught.message : "Could not send the link.",
+        text: caught instanceof Error ? caught.message : "Could not sign in.",
+      });
+    }
+  }
+
+  async function submitSignUp() {
+    const address = email.trim();
+    if (!address || !password.trim()) {
+      setAuthState({ kind: "error", text: "Enter both your email and password." });
+      return;
+    }
+    setAuthState({ kind: "sending" });
+    try {
+      await signUp(address, password);
+      setAuthState({
+        kind: "sent",
+        text: `Account created for ${address}. You can now sign in with the same email and password.`,
+      });
+      setPassword("");
+    } catch (caught) {
+      setAuthState({
+        kind: "error",
+        text: caught instanceof Error ? caught.message : "Could not create the account.",
       });
     }
   }
@@ -288,10 +313,10 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                 <>
                   <strong>Sign in or create an account</strong>
                   <p className="signin-note">
-                    There is no separate sign-up and no password — we email you a link,
-                    and it creates your account the first time. Everything in Prompt Lab
-                    works signed out; signing in just lets your forum posts carry your
-                    name.
+                    Optional — everything in Prompt Lab works signed out, and you
+                    can post to the forum anonymously. Signing in just lets posts
+                    carry your name. This uses Supabase email/password auth instead
+                    of a reset-by-email magic link.
                   </p>
                   <form
                     className="signin-row"
@@ -310,12 +335,29 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
                     />
+                    <input
+                        className="input"
+                        type="password"
+                        autoComplete="current-password"
+                        aria-label="Password"
+                        placeholder="Password"
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                    />
                     <button
                         className="btn btn-primary"
                         type="submit"
                         disabled={authState.kind === "sending"}
                     >
-                        {authState.kind === "sending" ? "Sending…" : "Email me a link"}
+                        {authState.kind === "sending" ? "Signing in…" : "Sign in"}
+                    </button>
+                    <button
+                        className="btn btn-quiet"
+                        type="button"
+                        onClick={() => void submitSignUp()}
+                        disabled={authState.kind === "sending"}
+                    >
+                        Create account
                     </button>
                   </form>
                 </>

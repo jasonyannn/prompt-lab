@@ -343,18 +343,44 @@ export async function toggleLike(postId: string) {
   return setForumLikeState(postId, !existingLike);
 }
 
-export async function signInWithEmail(email: string) {
-  const { error } = await supabase.auth.signInWithOtp({
-    email,
-    options: {
-      emailRedirectTo: window.location.origin,
-    },
+export async function signInWithEmailPassword(email: string, password: string) {
+  const trimmedEmail = email.trim();
+  const trimmedPassword = password.trim();
+
+  if (!trimmedEmail || !trimmedPassword) {
+    throw new Error("Enter both your email address and password.");
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({
+    email: trimmedEmail,
+    password: trimmedPassword,
   });
 
   if (error) {
-    const detail = error.message || "Unknown auth error";
-    throw new Error(`Supabase auth failed: ${detail}. Check Email auth is enabled and your Site URL is configured.`);
+    throw new Error(`Supabase sign-in failed: ${error.message}`);
   }
+
+  return data;
+}
+
+export async function signUpWithEmailPassword(email: string, password: string) {
+  const trimmedEmail = email.trim();
+  const trimmedPassword = password.trim();
+
+  if (!trimmedEmail || !trimmedPassword) {
+    throw new Error("Enter both your email address and password.");
+  }
+
+  const { data, error } = await supabase.auth.signUp({
+    email: trimmedEmail,
+    password: trimmedPassword,
+  });
+
+  if (error) {
+    throw new Error(`Supabase sign-up failed: ${error.message}`);
+  }
+
+  return data;
 }
 
 export async function signOut() {
