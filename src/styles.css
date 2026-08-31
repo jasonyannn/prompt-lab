@@ -2667,6 +2667,178 @@ select {
   margin-left: auto;
 }
 
+/* Chat conversations + prompt picker -------------------------------------- */
+
+.chat-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.chat-bar-button {
+  padding: 4px 9px;
+  font-size: 11.5px;
+}
+
+.chat-history {
+  max-height: 240px;
+  overflow-y: auto;
+  padding: 8px 11px;
+  border-bottom: 1px solid var(--line-soft);
+  background: var(--bg);
+}
+
+.chat-history ul {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chat-history li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.chat-history li.is-active {
+  border-color: var(--accent);
+}
+
+.chat-history-open {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+  padding: 7px 9px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.chat-history-open strong {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-history-open small {
+  color: var(--text-faint);
+  font-size: 10.5px;
+}
+
+.chat-history-open:hover strong {
+  color: var(--accent);
+}
+
+.prompt-picker {
+  max-height: 260px;
+  overflow-y: auto;
+  margin: 0 11px 8px;
+  padding: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.prompt-picker-head {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 8px;
+}
+
+.prompt-picker-head strong {
+  font-size: 12px;
+}
+
+.prompt-picker-head .input {
+  padding: 5px 9px;
+  font-size: 11.5px;
+}
+
+.prompt-picker-list {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prompt-picker-list button {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+
+.prompt-picker-list button:hover {
+  border-color: var(--line);
+  background: var(--panel);
+}
+
+.prompt-picker-list strong {
+  overflow: hidden;
+  flex: 1;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prompt-picker-list small {
+  flex: none;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+
+.prompt-picker-toggle {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.prompt-picker-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.prompt-picker-toggle.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.chat-textarea {
+  min-height: 34px;
+  max-height: 160px;
+  resize: vertical;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  line-height: 1.45;
+  font-family: inherit;
+}
+
 /* Agent manager ---------------------------------------------------------- */
 
 .agent-panel {
