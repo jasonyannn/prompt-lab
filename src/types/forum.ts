@@ -1,7 +1,6 @@
 export type ForumPost = {
   id: string;
   author_id: string | null;
-  author_name: string | null;
   title: string;
   content: string;
   category: string;
@@ -26,5 +25,4 @@ export type ForumInsert = {
   tags?: string[];
   visibility?: "public" | "unlisted";
   anonymous?: boolean;
-  author_name?: string;
 };

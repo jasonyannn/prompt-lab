@@ -9,7 +9,7 @@ export type SessionUser = {
 export async function getPublishedPosts(): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
-    .select("*, profiles:profiles!author_id(display_name)")
+    .select("*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)")
     .eq("status", "published")
     .order("created_at", { ascending: false });
 
@@ -18,7 +18,16 @@ export async function getPublishedPosts(): Promise<ForumPost[]> {
     throw new Error(`Supabase forum query failed: ${detail}`);
   }
 
-  return (data ?? []) as ForumPost[];
+  const posts = (data ?? []) as any[];
+
+  return posts.map((post) => {
+    const total = post.forum_post_like_totals?.[0]?.like_count ?? 0;
+    return {
+      ...post,
+      like_count: total,
+      usage_count: total,
+    } as ForumPost;
+  });
 }
 
 export function subscribeToAuthState(callback: (user: SessionUser | null) => void) {
@@ -44,7 +53,6 @@ export async function createForumPost(input: ForumInsert) {
 
   const payload = {
     author_id: user && !isAnonymous ? user.id : null,
-    author_name: user && !isAnonymous ? null : (input.author_name?.trim() || "Anonymous"),
     title: input.title.trim(),
     content: input.content.trim(),
     category: input.category ?? "General",
@@ -78,16 +86,6 @@ export async function toggleLike(postId: string) {
 
   if (findError) throw findError;
 
-  const { data: current, error: fetchError } = await supabase
-    .from("forum_posts")
-    .select("like_count, usage_count")
-    .eq("id", postId)
-    .single();
-
-  if (fetchError) throw fetchError;
-
-  const currentCount = current?.like_count ?? current?.usage_count ?? 0;
-
   if (existingLike) {
     const { error: deleteError } = await supabase
       .from("forum_post_likes")
@@ -96,19 +94,26 @@ export async function toggleLike(postId: string) {
 
     if (deleteError) throw deleteError;
 
-    const { data: updated, error: updateError } = await supabase
-      .from("forum_posts")
-      .update({ like_count: Math.max(0, currentCount - 1) })
-      .eq("id", postId)
+    const { data: current, error: fetchError } = await supabase
+      .from("forum_post_like_totals")
       .select("like_count")
+      .eq("post_id", postId)
       .single();
 
-    if (updateError) throw updateError;
+    if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
 
-    return {
-      liked: false,
-      count: updated?.like_count ?? Math.max(0, currentCount - 1),
-    };
+    const nextCount = Math.max(0, (current?.like_count ?? 0) - 1);
+
+    if (current) {
+      const { error: updateError } = await supabase
+        .from("forum_post_like_totals")
+        .update({ like_count: nextCount })
+        .eq("post_id", postId);
+
+      if (updateError) throw updateError;
+    }
+
+    return { liked: false, count: nextCount };
   }
 
   const { error: insertError } = await supabase
@@ -117,19 +122,32 @@ export async function toggleLike(postId: string) {
 
   if (insertError) throw insertError;
 
-  const { data: updated, error: updateError } = await supabase
-    .from("forum_posts")
-    .update({ like_count: currentCount + 1 })
-    .eq("id", postId)
+  const { data: current, error: fetchError } = await supabase
+    .from("forum_post_like_totals")
     .select("like_count")
+    .eq("post_id", postId)
     .single();
 
-  if (updateError) throw updateError;
+  if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
 
-  return {
-    liked: true,
-    count: updated?.like_count ?? currentCount + 1,
-  };
+  const nextCount = (current?.like_count ?? 0) + 1;
+
+  if (current) {
+    const { error: updateError } = await supabase
+      .from("forum_post_like_totals")
+      .update({ like_count: nextCount })
+      .eq("post_id", postId);
+
+    if (updateError) throw updateError;
+  } else {
+    const { error: insertTotalError } = await supabase
+      .from("forum_post_like_totals")
+      .insert({ post_id: postId, like_count: 1 });
+
+    if (insertTotalError) throw insertTotalError;
+  }
+
+  return { liked: true, count: nextCount };
 }
 
 export async function signInWithEmail(email: string) {
