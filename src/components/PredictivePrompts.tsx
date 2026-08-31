@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { promptStore } from "../lib/promptStore";
 import { categoryStore } from "../lib/categoryStore";
 import { useCategories } from "../hooks/useCategories";
+import { useModel } from "../hooks/useModel";
+import { generateWithModel } from "../lib/modelClient";
 import type { PromptAgent } from "../lib/agentStore";
 import type { PromptBrief } from "../lib/promptGenerator";
 import {
@@ -21,6 +23,9 @@ type BatchSize = keyof typeof BATCH;
 
 export function PredictivePrompts({ brief, agent, onOpenPrompt }: Props) {
   const { categories } = useCategories();
+  const model = useModel();
+  const [busy, setBusy] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
   const [predictions, setPredictions] = useState<PredictedPrompt[]>([]);
   const [savedIds, setSavedIds] = useState<Record<string, string>>({});
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -48,21 +53,74 @@ export function PredictivePrompts({ brief, agent, onOpenPrompt }: Props) {
     if (addingCategory) newCategoryRef.current?.focus();
   }, [addingCategory]);
 
-  function predict(mode: "replace" | "more") {
-    if (!agent || !idea) return;
-    const next = predictPrompts({
-      brief: { ...brief, idea },
-      agent,
-      count: BATCH[size],
-      exclude: mode === "more" ? predictions.map((item) => item.localId) : [],
-    });
-
+  function apply(next: PredictedPrompt[], mode: "replace" | "more") {
     if (mode === "more") {
       setPredictions([...predictions, ...next]);
     } else {
       setPredictions(next);
       setSavedIds({});
       setExpandedId(null);
+    }
+  }
+
+  function predictInstant(mode: "replace" | "more") {
+    if (!agent || !idea) return;
+    apply(
+      predictPrompts({
+        brief: { ...brief, idea },
+        agent,
+        count: BATCH[size],
+        exclude: mode === "more" ? predictions.map((item) => item.localId) : [],
+      }),
+      mode
+    );
+  }
+
+  async function predict(mode: "replace" | "more", useModelEngine = false) {
+    if (!agent || !idea || busy) return;
+    setModelError(null);
+
+    if (!useModelEngine || !model.ready) {
+      predictInstant(mode);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await generateWithModel({
+        mode: "predict",
+        idea,
+        audience: brief.audience,
+        platform: brief.platform,
+        sourceData: brief.sourceData,
+        constraints: brief.constraints,
+        agentRole: agent.role,
+        agentInstructions: agent.instructions,
+        count: BATCH[size],
+        categories,
+        exclude: predictions.map((item) => item.title),
+      });
+      apply(
+        result.prompts.map((prompt, index) => ({
+          localId: `model-${Date.now()}-${index}`,
+          title: prompt.title,
+          label: prompt.title,
+          intent: prompt.intent,
+          category: categories.includes(prompt.category)
+            ? prompt.category
+            : agent.defaultCategory,
+          content: prompt.content,
+          confidence: 0,
+        })),
+        mode
+      );
+    } catch (error) {
+      setModelError(
+        `${error instanceof Error ? error.message : String(error)} Showing instant predictions instead.`
+      );
+      predictInstant(mode);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -165,14 +223,27 @@ export function PredictivePrompts({ brief, agent, onOpenPrompt }: Props) {
         <div className="predict-controls">
           <button
             className="btn btn-primary"
-            disabled={!idea}
-            onClick={() => predict("replace")}
+            disabled={!idea || busy}
+            onClick={() => void predict("replace")}
           >
             {predictions.length > 0 ? "Predict again" : "Predict prompts →"}
           </button>
+          {model.ready && (
+            <button
+              className="btn"
+              disabled={!idea || busy}
+              onClick={() => void predict("replace", true)}
+            >
+              {busy ? "Thinking…" : `Predict with ${model.model}`}
+            </button>
+          )}
           {predictions.length > 0 && (
             <>
-              <button className="btn" onClick={() => predict("more")}>
+              <button
+                className="btn"
+                disabled={busy}
+                onClick={() => void predict("more", model.ready)}
+              >
                 Predict {BATCH[size]} more
               </button>
               <button
@@ -242,6 +313,10 @@ export function PredictivePrompts({ brief, agent, onOpenPrompt }: Props) {
           )}
         </div>
 
+        {modelError && (
+          <p className="attachment-error" role="alert">{modelError}</p>
+        )}
+
         {predictions.length === 0 ? (
           <p className="predict-empty">
             {idea
@@ -261,9 +336,13 @@ export function PredictivePrompts({ brief, agent, onOpenPrompt }: Props) {
                   <div className="predict-card-head">
                     <span
                       className="predict-score"
-                      title="How likely this follow-up is for your topic"
+                      title={
+                        item.confidence
+                          ? "How likely this follow-up is for your topic"
+                          : `Written by ${model.model}`
+                      }
                     >
-                      {item.confidence}%
+                      {item.confidence ? `${item.confidence}%` : "AI"}
                     </span>
                     <button
                       className="predict-title"

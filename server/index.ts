@@ -1,6 +1,12 @@
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { ensureDatabase, listRemoteActivity } from "./database";
 import { createPromptLabMcpServer, REMOTE_TOOL_NAMES } from "./mcp";
+import {
+  DEFAULT_EFFORT,
+  DEFAULT_MODEL,
+  generateWithModel,
+  parseGenerateRequest,
+} from "./openai";
 import type { Env } from "./env";
 
 function json(payload: unknown, init: ResponseInit = {}) {
@@ -131,6 +137,73 @@ async function handleApi(request: Request, env: Env, pathname: string) {
   return json({ error: "Not found." }, { status: 404 });
 }
 
+async function handleModel(request: Request, env: Env, pathname: string) {
+  const rejected = rejectInvalidOrigin(request, env);
+  if (rejected) return rejected;
+  const cors = corsHeaders(request, env);
+  if (request.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: cors });
+  }
+
+  const model = env.OPENAI_MODEL || DEFAULT_MODEL;
+
+  if (pathname === "/api/model/status") {
+    return withHeaders(
+      json({ ready: Boolean(env.OPENAI_API_KEY), model }),
+      cors
+    );
+  }
+
+  if (pathname !== "/api/model/generate") {
+    return withHeaders(json({ error: "Not found." }, { status: 404 }), cors);
+  }
+  if (request.method !== "POST") {
+    return withHeaders(
+      json({ error: "Method not allowed." }, { status: 405 }),
+      cors
+    );
+  }
+  if (!env.OPENAI_API_KEY) {
+    return withHeaders(
+      json(
+        { error: "No OpenAI API key is configured for this deployment." },
+        { status: 503 }
+      ),
+      cors
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return withHeaders(json({ error: "Invalid JSON body." }, { status: 400 }), cors);
+  }
+
+  const parsed = parseGenerateRequest(body);
+  if (typeof parsed === "string") {
+    return withHeaders(json({ error: parsed }, { status: 400 }), cors);
+  }
+
+  try {
+    const result = await generateWithModel(parsed, {
+      apiKey: env.OPENAI_API_KEY,
+      model: env.OPENAI_MODEL,
+      effort: env.OPENAI_REASONING_EFFORT || DEFAULT_EFFORT,
+    });
+    return withHeaders(json(result), cors);
+  } catch (error) {
+    console.error("[model]", error);
+    return withHeaders(
+      json(
+        { error: error instanceof Error ? error.message : "Generation failed." },
+        { status: 502 }
+      ),
+      cors
+    );
+  }
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -141,6 +214,10 @@ export default {
 
     if (url.pathname.startsWith("/api/mcp/")) {
       return handleApi(request, env, url.pathname);
+    }
+
+    if (url.pathname.startsWith("/api/model/")) {
+      return handleModel(request, env, url.pathname);
     }
 
     const response = await env.ASSETS.fetch(request);

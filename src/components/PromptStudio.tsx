@@ -10,6 +10,9 @@ import {
 } from "../lib/promptGenerator";
 import { attachmentContext, type UserAttachment } from "../lib/attachments";
 import { AttachmentPicker } from "./AttachmentPicker";
+import { useCategories } from "../hooks/useCategories";
+import { useModel } from "../hooks/useModel";
+import { generateWithModel } from "../lib/modelClient";
 import { AgentManager } from "./AgentManager";
 import { KnowledgeLibrary } from "./KnowledgeLibrary";
 import { PredictivePrompts } from "./PredictivePrompts";
@@ -36,6 +39,12 @@ const EMPTY_BRIEF: PromptBrief = {
 export function PromptStudio({ onOpenPrompt }: Props) {
   const { agents } = useAgents();
   const { prompts } = usePrompts();
+  const { categories } = useCategories();
+  const model = useModel();
+  const [engine, setEngine] = useState<"instant" | "model">("instant");
+  const [busy, setBusy] = useState(false);
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [generatedBy, setGeneratedBy] = useState<string | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(
     () => agents[0]?.id ?? null
   );
@@ -58,12 +67,8 @@ export function PromptStudio({ onOpenPrompt }: Props) {
     return counts;
   }, [prompts]);
 
-  function generate() {
-    if (
-      !brief.idea.trim() ||
-      !selectedAgent ||
-      (brief.templateId === "screenshot" && imageCount === 0)
-    ) return;
+  function generateInstant() {
+    if (!selectedAgent) return;
     setGenerated(
       generatePromptPack(
         {
@@ -74,7 +79,60 @@ export function PromptStudio({ onOpenPrompt }: Props) {
         selectedAgent
       )
     );
+    setGeneratedBy(null);
     setSavedIds({});
+  }
+
+  async function generate() {
+    if (
+      !brief.idea.trim() ||
+      !selectedAgent ||
+      busy ||
+      (brief.templateId === "screenshot" && imageCount === 0)
+    ) return;
+
+    setModelError(null);
+
+    if (engine === "instant" || !model.ready) {
+      generateInstant();
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const result = await generateWithModel({
+        mode: "pack",
+        idea: brief.idea.trim(),
+        audience: brief.audience,
+        platform: brief.platform,
+        sourceData: brief.sourceData,
+        constraints: brief.constraints,
+        agentRole: selectedAgent.role,
+        agentInstructions: selectedAgent.instructions,
+        count: 4,
+        categories,
+      });
+      setGenerated(
+        result.prompts.map((prompt, index) => ({
+          localId: `model-${index}`,
+          title: prompt.title,
+          content: prompt.content,
+          category: categories.includes(prompt.category)
+            ? prompt.category
+            : selectedAgent.defaultCategory,
+        }))
+      );
+      setGeneratedBy(result.model);
+      setSavedIds({});
+    } catch (error) {
+      // The pack still gets written — the model is an upgrade, not a dependency.
+      setModelError(
+        `${error instanceof Error ? error.message : String(error)} Generated the instant pack instead.`
+      );
+      generateInstant();
+    } finally {
+      setBusy(false);
+    }
   }
 
   function selectAgent(id: string) {
@@ -297,10 +355,43 @@ export function PromptStudio({ onOpenPrompt }: Props) {
                 <strong>Generate 4 connected prompts</strong>
                 <span>Each one includes context, inputs, process and a required output.</span>
               </div>
-              <button className="btn btn-primary btn-generate" disabled={!canGenerate} onClick={generate}>
-                Generate prompt pack →
+              {model.ready && (
+                <div className="engine-toggle" role="group" aria-label="Generation engine">
+                  <button
+                    type="button"
+                    className={engine === "instant" ? "is-active" : ""}
+                    aria-pressed={engine === "instant"}
+                    onClick={() => setEngine("instant")}
+                  >
+                    Instant
+                  </button>
+                  <button
+                    type="button"
+                    className={engine === "model" ? "is-active" : ""}
+                    aria-pressed={engine === "model"}
+                    onClick={() => setEngine("model")}
+                  >
+                    {model.model}
+                  </button>
+                </div>
+              )}
+              <button
+                className="btn btn-primary btn-generate"
+                disabled={!canGenerate || busy}
+                onClick={() => void generate()}
+              >
+                {busy ? "Writing prompts…" : "Generate prompt pack →"}
               </button>
             </div>
+            {busy && (
+              <p className="model-note" role="status">
+                {model.model} is writing four prompts from scratch. This takes
+                around half a minute.
+              </p>
+            )}
+            {modelError && (
+              <p className="attachment-error" role="alert">{modelError}</p>
+            )}
           </div>
         </section>
 
@@ -308,7 +399,9 @@ export function PromptStudio({ onOpenPrompt }: Props) {
           <section className="generated-section" aria-live="polite">
             <div className="generated-head">
               <div>
-                <span className="eyebrow studio-eyebrow">Your prompt pack</span>
+                <span className="eyebrow studio-eyebrow">
+                  Your prompt pack{generatedBy ? ` · written by ${generatedBy}` : ""}
+                </span>
                 <h2>{generated.length} prompts, ready to make your own.</h2>
               </div>
               <button
