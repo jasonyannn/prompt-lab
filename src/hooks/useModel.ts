@@ -14,9 +14,10 @@ export function useModel(): ModelStatus & { checking: boolean } {
 
   useEffect(() => {
     const controller = new AbortController();
-    void checkModel(controller.signal).then((status) =>
-      setState({ ...status, checking: false })
-    );
+    void checkModel(controller.signal).then((status) => {
+      if (controller.signal.aborted) return;
+      setState({ ...status, checking: false });
+    });
     return () => controller.abort();
   }, []);
 
