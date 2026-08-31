@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { promptStore, type Prompt } from "../lib/promptStore";
 import type { PromptAgent } from "../lib/agentStore";
 import { extractVariables, renderPrompt } from "../lib/variables";
+import { evaluatePrompt } from "../lib/promptEvaluator";
 
 type Props = {
   prompt: Prompt;
@@ -17,6 +18,8 @@ export function PromptDetail({ prompt, agents }: Props) {
   const [values, setValues] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showTest, setShowTest] = useState(false);
+  const [sampleOutput, setSampleOutput] = useState("");
 
   const variables = useMemo(
     () => extractVariables(prompt.content),
@@ -29,6 +32,10 @@ export function PromptDetail({ prompt, agents }: Props) {
   );
 
   const unfilled = variables.filter((name) => !values[name]?.trim());
+  const evaluation = useMemo(
+    () => evaluatePrompt(prompt.content, values, sampleOutput),
+    [prompt.content, sampleOutput, values]
+  );
 
   // An agent tool call can change this prompt underneath us — resync on change.
   useEffect(() => {
@@ -38,6 +45,8 @@ export function PromptDetail({ prompt, agents }: Props) {
     setAgentId(prompt.agentId ?? "");
     setEditing(false);
     setConfirmDelete(false);
+    setShowTest(false);
+    setSampleOutput("");
   }, [
     prompt.id,
     prompt.updatedAt,
@@ -178,6 +187,9 @@ export function PromptDetail({ prompt, agents }: Props) {
             Delete
           </button>
         )}
+        <button className="btn btn-ghost" onClick={() => setShowTest((open) => !open)}>
+          {showTest ? "Hide test" : `Test · ${evaluation.score}`}
+        </button>
         <button className="btn btn-primary" onClick={copyAndRecord}>
           {copied ? "Copied ✓" : "Copy"}
         </button>
@@ -243,6 +255,85 @@ export function PromptDetail({ prompt, agents }: Props) {
               ))}
             </div>
           </div>
+        )}
+
+        {showTest && (
+          <section className="prompt-test" aria-label="Prompt quality test">
+            <div className="prompt-test-head">
+              <span className={`quality-score is-${evaluation.verdict.toLowerCase().replace(/\s+/g, "-")}`}>
+                {evaluation.score}
+              </span>
+              <span>
+                <strong>{evaluation.verdict}</strong>
+                <small>Deterministic quality check · not a model opinion</small>
+              </span>
+            </div>
+
+            <div className="quality-grid">
+              {evaluation.criteria.map((item) => (
+                <div className="quality-item" key={item.key}>
+                  <span>
+                    <strong>{item.label}</strong>
+                    <small>{item.score}/100</small>
+                  </span>
+                  <span className="quality-track" aria-label={`${item.label}: ${item.score} out of 100`}>
+                    <span style={{ width: `${item.score}%` }} />
+                  </span>
+                  <p>{item.detail}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="prompt-test-summary">
+              <div>
+                <strong>Test inputs</strong>
+                <p>
+                  {evaluation.test.variableCount === 0
+                    ? "This prompt has no reusable variables."
+                    : `${evaluation.test.filledVariables.length}/${evaluation.test.variableCount} variables filled.`}
+                </p>
+              </div>
+              <div>
+                <strong>Expected output</strong>
+                <p>
+                  {evaluation.test.expectedSections.length > 0
+                    ? `${evaluation.test.expectedSections.length} named sections detected.`
+                    : "No named output sections detected."}
+                </p>
+              </div>
+            </div>
+
+            <div className="field sample-output-field">
+              <label className="label" htmlFor="sample-output">
+                Sample AI output <span className="optional">optional</span>
+              </label>
+              <textarea
+                id="sample-output"
+                className="textarea textarea-compact"
+                placeholder="Paste a response produced by this prompt to test whether it follows the required sections…"
+                value={sampleOutput}
+                onChange={(event) => setSampleOutput(event.target.value)}
+              />
+              {evaluation.test.sampleOutputCoverage !== undefined && (
+                <p className="sample-coverage">
+                  Detected section coverage: <strong>{evaluation.test.sampleOutputCoverage}%</strong>
+                </p>
+              )}
+            </div>
+
+            {evaluation.recommendations.length > 0 ? (
+              <div className="quality-recommendations">
+                <strong>Recommended improvements</strong>
+                <ul>
+                  {evaluation.recommendations.map((recommendation) => (
+                    <li key={recommendation}>{recommendation}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : (
+              <p className="quality-ready">All five structural checks passed.</p>
+            )}
+          </section>
         )}
 
         <pre className="prompt-body">{rendered}</pre>
