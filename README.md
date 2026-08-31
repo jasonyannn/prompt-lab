@@ -81,6 +81,11 @@ await document.modelContext.registerTool(tool, { signal: controller.signal });
 | `list_categories` | List saved prompt categories |
 | `create_category` | Create a reusable category |
 | `delete_agent` | Remove an agent while keeping its prompts |
+| `search_catalog` | Search the public prompt catalog by a user goal and return matching journeys + prompts |
+| `browse_catalog` | Browse catalog categories, subcategories and prompt lists with optional filtering |
+| `get_catalog_prompt` | Read one catalog prompt in full, including rendered content and variable placeholders |
+| `save_catalog_prompt` | Save a catalog prompt into the user's personal prompt library |
+| `start_journey` | Open a catalog journey and save its ordered prompts to the library |
 | `search_prompts` | Keyword search across title, body and category |
 | `get_prompt` | Fetch one prompt in full |
 | `evaluate_prompt` | Score and test prompt structure and sample-output coverage |
@@ -91,9 +96,17 @@ await document.modelContext.registerTool(tool, { signal: controller.signal });
 | `render_prompt` | Fill a prompt's `{{placeholders}}` and return finished text |
 | `delete_prompt` | Remove a prompt (marked `destructiveHint`) |
 
-Read-only tools carry `annotations.readOnlyHint`. Every tool has a full JSON
-Schema `inputSchema`, and failures return `isError: true` with a readable message
-rather than throwing.
+The browser-side catalog tools let an agent discover public prompt journeys, inspect a specific catalog prompt, and bring it into the user's local library without leaving the page. Read-only tools carry `annotations.readOnlyHint`. Every tool has a full JSON Schema `inputSchema`, and failures return `isError: true` with a readable message rather than throwing.
+
+#### Catalog discovery and import tools
+
+These five browser tools are the “library discovery” layer for the public prompt catalog:
+
+- `search_catalog` — takes a natural-language goal like “I want to launch an online store” and returns the most relevant catalog journeys and individual prompts. It prioritizes journeys first, then prompts, so the agent can suggest the best starting path.
+- `browse_catalog` — lists the catalog categories, lets an agent drill into a specific category or subcategory, and optionally filters by prompt tier (`quick`, `workflow`, `master`). This is the browse mode for exploration without a query.
+- `get_catalog_prompt` — fetches one catalog prompt in full, including rendered content and the `{{variables}}` it expects. This is the read-detail step before saving or adapting a prompt.
+- `save_catalog_prompt` — copies an existing catalog prompt into the user's personal library so it can be edited, rendered, rated, and reused locally. This keeps the public catalog as a template source rather than mutating the original.
+- `start_journey` — opens a full journey (an ordered path of prompts for a goal) and optionally saves each step into the user's library. This is useful when the agent wants to hand the user a guided sequence rather than a single prompt.
 
 ### Live UI refresh
 
