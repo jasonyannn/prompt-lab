@@ -14,6 +14,7 @@ import { agentStore, type PromptAgent } from "./agentStore";
 import {
   generatePromptPack,
   PROMPT_TEMPLATES,
+  type PromptBrief,
   type PromptTemplateId,
 } from "./promptGenerator";
 import {
@@ -23,6 +24,8 @@ import {
   type UserAttachment,
 } from "./attachments";
 import { knowledgeStore, type KnowledgeItem } from "./knowledgeStore";
+import { categoryStore } from "./categoryStore";
+import { detectSignals, predictPrompts } from "./predictivePrompts";
 import { evaluatePrompt } from "./promptEvaluator";
 import { extractVariables, renderPrompt } from "./variables";
 
@@ -660,6 +663,149 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
         true
       );
       return ok({ generated: prompts.length, saved: shouldSave, prompts });
+    },
+  },
+
+  {
+    name: "predict_prompts",
+    description:
+      "Predict the follow-up prompts a user is likely to want next for a topic, beyond the four in a prompt pack. Returns ranked, ready-to-run prompts with a suggested category. Saves nothing unless asked.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        agent_id: { type: "string", description: "Agent profile id from list_agents." },
+        idea: { type: "string", description: "The topic or thing the user is working on." },
+        count: {
+          type: "number",
+          description: "How many prompts to predict, 1–24. Defaults to 4.",
+        },
+        template: {
+          type: "string",
+          enum: PROMPT_TEMPLATES.map((template) => template.id),
+          description: "Workflow the topic sits in: app, design, research, content or screenshot. Defaults to app.",
+        },
+        exclude: {
+          type: "array",
+          items: { type: "string" },
+          description:
+            "localId values already shown, so a second call predicts different prompts.",
+        },
+        audience: { type: "string", description: "Who the outcome is for." },
+        platform: { type: "string", description: "Where the prompts will be used." },
+        source_data: { type: "string", description: "Inputs the user can supply to the AI." },
+        constraints: { type: "string", description: "Scope, time, technology or style constraints." },
+        save: { type: "boolean", description: "Save the predictions to the library. Defaults to false." },
+      },
+      required: ["agent_id", "idea"],
+    },
+    execute: (input) => {
+      const agentId = str(input, "agent_id");
+      const idea = str(input, "idea");
+      if (!agentId || !idea) {
+        logActivity("predict_prompts", input, "Missing agent_id or idea", false);
+        return fail("Both `agent_id` and `idea` are required.");
+      }
+      const agent = agentStore.get(agentId);
+      if (!agent) {
+        logActivity("predict_prompts", input, `No agent with id ${agentId}`, false);
+        return fail(`No agent found with id "${agentId}".`);
+      }
+      const rawTemplate = str(input, "template") ?? "app";
+      if (!PROMPT_TEMPLATES.some((template) => template.id === rawTemplate)) {
+        logActivity("predict_prompts", input, `Unknown template ${rawTemplate}`, false);
+        return fail("`template` must be app, design, research, content or screenshot.");
+      }
+      const requested = num(input, "count") ?? 4;
+      const count = Math.max(1, Math.min(24, Math.round(requested)));
+      const rawExclude = input.exclude;
+      const exclude = Array.isArray(rawExclude)
+        ? rawExclude.filter((entry): entry is string => typeof entry === "string")
+        : [];
+
+      const brief: PromptBrief = {
+        idea,
+        audience: str(input, "audience") ?? "",
+        platform: str(input, "platform") ?? "",
+        sourceData: str(input, "source_data") ?? "",
+        constraints: str(input, "constraints") ?? "",
+        templateId: rawTemplate as PromptTemplateId,
+      };
+      const predicted = predictPrompts({ brief, agent, count, exclude });
+      const shouldSave = bool(input, "save") ?? false;
+      const prompts = shouldSave
+        ? predicted.map((item) => {
+            categoryStore.ensure(item.category);
+            return promptStore.create({
+              title: item.title,
+              content: item.content,
+              category: item.category,
+              agentId: agent.id,
+            });
+          })
+        : predicted;
+
+      logActivity(
+        "predict_prompts",
+        input,
+        `${shouldSave ? "Predicted and saved" : "Predicted"} ${predicted.length} follow-up prompts for "${idea}"`,
+        true
+      );
+      return ok({
+        predicted: predicted.length,
+        saved: shouldSave,
+        signals: detectSignals(brief).map((signal) => signal.label),
+        prompts,
+      });
+    },
+  },
+
+  {
+    name: "list_categories",
+    description:
+      "List the library categories this user can save prompts into, with how many prompts each already holds.",
+    annotations: { readOnlyHint: true },
+    inputSchema: { type: "object", properties: {} },
+    execute: () => {
+      const prompts = promptStore.getAll();
+      const categories = categoryStore.getAll().map((name) => ({
+        name,
+        promptCount: prompts.filter((prompt) => prompt.category === name).length,
+      }));
+      logActivity("list_categories", {}, `Listed ${categories.length} categories`, true);
+      return ok({ count: categories.length, categories });
+    },
+  },
+
+  {
+    name: "create_category",
+    description:
+      "Add a category to the user's library. Existing categories are returned unchanged rather than duplicated.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Category name, e.g. Client work." },
+      },
+      required: ["name"],
+    },
+    execute: (input) => {
+      const name = str(input, "name");
+      if (!name) {
+        logActivity("create_category", input, "Missing name", false);
+        return fail("`name` is required.");
+      }
+      const existing = categoryStore.find(name);
+      const created = categoryStore.create(name);
+      if (!created) {
+        logActivity("create_category", input, "Invalid category name", false);
+        return fail("That category name is empty after trimming.");
+      }
+      logActivity(
+        "create_category",
+        input,
+        existing ? `Category "${created}" already existed` : `Created category "${created}"`,
+        true
+      );
+      return ok({ name: created, alreadyExisted: Boolean(existing) });
     },
   },
 

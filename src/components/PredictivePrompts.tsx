@@ -272,7 +272,7 @@ export function PredictivePrompts({ brief, agent, onOpenPrompt }: Props) {
                         setExpandedId(expanded ? null : item.localId)
                       }
                     >
-                      <strong>{item.title}</strong>
+                      <strong title={item.title}>{item.label}</strong>
                       <small>{item.intent}</small>
                     </button>
 
