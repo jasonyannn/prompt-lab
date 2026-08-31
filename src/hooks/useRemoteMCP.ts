@@ -41,8 +41,15 @@ const FALLBACK_TOOLS = [
   "delete_prompt",
 ];
 
+const APP_BASE = import.meta.env.BASE_URL.endsWith("/")
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
+
 export function useRemoteMCP(): RemoteMCPState {
-  const endpoint = useMemo(() => new URL("/mcp", window.location.origin).href, []);
+  const endpoint = useMemo(
+    () => new URL(`${APP_BASE}mcp`, window.location.origin).href,
+    []
+  );
   const [state, setState] = useState<Omit<RemoteMCPState, "endpoint">>({
     ready: false,
     checking: true,
@@ -57,7 +64,7 @@ export function useRemoteMCP(): RemoteMCPState {
 
     async function refresh() {
       try {
-        const response = await fetch("/api/mcp/status", {
+        const response = await fetch(`${APP_BASE}api/mcp/status`, {
           signal: controller.signal,
           headers: { Accept: "application/json" },
         });
@@ -80,10 +87,13 @@ export function useRemoteMCP(): RemoteMCPState {
         });
 
         if (status.ready) {
-          const activityResponse = await fetch("/api/mcp/activity?limit=25", {
+          const activityResponse = await fetch(
+            `${APP_BASE}api/mcp/activity?limit=25`,
+            {
             signal: controller.signal,
             headers: { Accept: "application/json" },
-          });
+            }
+          );
           if (activityResponse.ok) {
             const payload = (await activityResponse.json()) as ActivityResponse;
             if (Array.isArray(payload.activity)) {

@@ -88,7 +88,6 @@ async function handleMcp(request: Request, env: Env) {
     () => createPromptLabMcpServer(env.DB),
     {
       legacy: "stateless",
-      responseMode: "json",
       onerror: (error) => console.error("[remote-mcp]", error),
     }
   );

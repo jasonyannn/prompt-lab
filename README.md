@@ -3,17 +3,58 @@
 **Live: https://jasonyannn.github.io/prompt-lab/**
 (open in ChatGPT's in-app browser, or Chrome 149+ with WebMCP enabled)
 
-A prompt library that exposes its real functionality to AI agents through
-**WebMCP** — the browser's native `document.modelContext` API.
+A prompt library that exposes its real functionality to AI agents through two
+standards-based surfaces:
+
+- **Browser WebMCP** through the native `document.modelContext` API.
+- **Remote MCP** through a public Streamable HTTP endpoint at `/mcp`.
 
 Everything a human can do in this UI, an agent can do through a registered tool,
-and every agent action shows up in the interface immediately.
+and browser-native, remote and local-agent calls appear in the Activity feed.
 
-## The WebMCP integration
+## Connect an external agent
 
-Tools are registered against the browser's own model context. There is no custom
-MCP implementation, no shim, and no simulation — if the browser doesn't support
-WebMCP, the app says so instead of pretending.
+Use the deployed app's MCP URL:
+
+```text
+https://<your-prompt-lab-site>/mcp
+```
+
+The endpoint implements the current stateless MCP `2026-07-28` protocol and a
+stateless `2025-11-25` compatibility path. It returns JSON for ordinary modern
+calls and uses the official `@modelcontextprotocol/server` Web Standard handler.
+
+The remote library is stored in Cloudflare D1, so external agents can search,
+create, render, rate, version, compare and delete prompts without keeping a
+browser tab open. Prompt updates append to version history rather than silently
+overwriting the only copy.
+
+The hackathon deployment is intentionally an unauthenticated shared library.
+Do not store secrets or private material there. Browser attachments and saved
+agent knowledge remain device-local and are not exposed by the remote server.
+
+### Remote tools
+
+| Tool | Purpose |
+|---|---|
+| `list_agents` | List reusable remote agent profiles |
+| `create_agent` / `update_agent` | Maintain remote agent profiles |
+| `search_prompts` / `get_prompt` | Discover and read shared prompts |
+| `create_prompt` / `update_prompt` | Create or revise prompts with history |
+| `create_prompt_version` | Save an explicit new version |
+| `create_prompt_variant` | Branch a prompt into the same family |
+| `get_prompt_history` | Retrieve the full lifecycle of a prompt |
+| `compare_prompt_versions` | Return a bounded line-by-line comparison |
+| `rate_prompt` / `record_prompt_use` | Maintain quality and usage metadata |
+| `render_prompt` | Fill `{{variables}}` and record a use |
+| `delete_prompt` | Delete a prompt and its history after confirmation |
+
+## The browser WebMCP integration
+
+Browser tools are registered against the browser's own model context. There is
+no page-side shim or simulated model context — if the browser does not support
+WebMCP, the app reports that honestly while the remote `/mcp` endpoint remains
+available.
 
 ```ts
 // src/lib/webmcp.ts
@@ -22,7 +63,7 @@ await document.modelContext.registerTool(tool, { signal: controller.signal });
 
 `useWebMCP()` is called exactly once, from the root `App` component.
 
-### Registered tools
+### Browser-registered tools
 
 | Tool | Purpose |
 |---|---|
@@ -59,9 +100,9 @@ list and the open detail pane with no user interaction.
 
 ### Agent Activity
 
-Every tool call — successful or failed — is appended to an in-memory log and
-rendered in the Agent Activity panel, so you can watch an agent work in real
-time.
+Browser and local tool calls are appended to an in-memory log. Remote calls are
+stored durably and polled into the same Agent Activity panel, so the interface
+labels all three sources.
 
 ## Features
 
@@ -88,15 +129,13 @@ time.
 - **Export / import** the whole library as JSON.
 - **Built-in local agent** — chat with Llama 3.2 through Ollama, wired to the
   same tools (see below).
-- **Agent Activity feed** — every tool call, labelled by whether it came from
-  the browser's agent (`WEBMCP`) or the local model (`LOCAL`).
+- **Agent Activity feed** — calls are labelled `WEBMCP`, `REMOTE MCP` or `LOCAL`.
 
 ## The built-in local agent (optional)
 
-The competition surface is `document.modelContext` — judges drive it with their
-own agent. The bundled Ollama panel is a *local demo* so the tool loop can be
-shown without a WebMCP-enabled browser. It calls the exact same tool
-implementations, through `executeTool()`.
+The bundled Ollama panel is a local demo so the browser tool loop can be shown
+without a WebMCP-enabled browser. It calls the exact same page tool
+implementations through `executeTool()`.
 
 ```bash
 OLLAMA_ORIGINS=* ollama serve   # CORS: the browser calls Ollama directly
@@ -124,7 +163,9 @@ npm run build      # typecheck + production bundle to dist/
 npm run typecheck
 ```
 
-WebMCP requires a **secure origin**: localhost, or HTTPS in production.
+Browser WebMCP requires a **secure origin**: localhost, or HTTPS in production.
+The remote endpoint is emitted in the Sites build with a D1 binding and the
+generated Drizzle migration under `drizzle/`.
 
 ## Architecture
 
@@ -138,20 +179,28 @@ src/
   lib/promptEvaluator.ts deterministic prompt rubric and sample-output test
   lib/webmcp.ts          WebMCP types, tool definitions, registration, activity log
   hooks/useWebMCP.ts     registers the tool set once, exposes status + activity
+  hooks/useRemoteMCP.ts  detects /mcp and merges remote activity into the UI
   hooks/usePrompts.ts    live view of the library
   components/            status badge, activity panel, list, detail, new-prompt form
   App.tsx                root; calls useWebMCP()
+server/
+  index.ts               Cloudflare Worker routing, CORS and /mcp mount
+  mcp.ts                 remote MCP server and 15 tool definitions
+  database.ts            D1 persistence, seeds, versions and activity
+db/schema.ts             Drizzle source schema
+drizzle/                 generated D1 migration
 ```
 
 ## Status
 
-Verified against a spec-accurate `document.modelContext` in a headless browser:
-all tools register and survive React StrictMode's remount, agent mutations
-refresh the UI live, error paths return `isError`, and the page loads with no
-console errors.
+The remote endpoint has been exercised at the protocol level for tool discovery,
+search, create, version, history, compare and render calls against a SQLite-backed
+D1-compatible test adapter. Both the stateless `2026-07-28` JSON path and the
+`2025-11-25` initialization compatibility response are covered.
 
 Prompts persist to `localStorage`, while reusable agent knowledge stays in local
-browser IndexedDB. There is no upload backend.
+browser IndexedDB. The remote shared prompt library and remote activity log use
+D1. There is no upload backend, so attachments are never published through MCP.
 
 The Ollama chat loop's tool-call round-tripping has not been exercised against a
 live model on the development machine; the offline path and the shared tool
