@@ -26,6 +26,9 @@ import {
 import { knowledgeStore, type KnowledgeItem } from "./knowledgeStore";
 import { categoryStore } from "./categoryStore";
 import {
+  catalogPromptTitle,
+  catalogSourceId,
+  findVariant,
   getCategories,
   getCategory,
   getJourney,
@@ -272,6 +275,17 @@ function summarizeCatalogPrompt(spec: CatalogPromptSpec) {
     categoryId: spec.categoryId,
     subcategoryId: spec.subcategoryId,
     tags: spec.tags,
+    ...(spec.variants
+      ? {
+          variants: {
+            label: spec.variants.label,
+            options: spec.variants.options.map((option) => ({
+              id: option.id,
+              name: option.name,
+            })),
+          },
+        }
+      : {}),
   };
 }
 
@@ -815,6 +829,11 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
       type: "object",
       properties: {
         id: { type: "string", description: "Catalog prompt id." },
+        variant: {
+          type: "string",
+          description:
+            "Optional role or industry version id, from the prompt's `variants` list.",
+        },
       },
       required: ["id"],
     },
@@ -825,10 +844,26 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
         logActivity("get_catalog_prompt", input, `No catalog prompt ${id}`, false);
         return fail(`No catalog prompt with id "${id}".`);
       }
-      const content = renderCatalogPrompt(spec);
-      logActivity("get_catalog_prompt", input, `Read catalog prompt "${spec.title}"`, true);
+      const variantId = str(input, "variant");
+      if (variantId && !findVariant(spec, variantId)) {
+        logActivity("get_catalog_prompt", input, `Unknown variant ${variantId}`, false);
+        return fail(
+          `"${spec.title}" has no variant "${variantId}". Available: ${
+            spec.variants?.options.map((option) => option.id).join(", ") || "none"
+          }.`
+        );
+      }
+      const content = renderCatalogPrompt(spec, variantId);
+      logActivity(
+        "get_catalog_prompt",
+        input,
+        `Read catalog prompt "${catalogPromptTitle(spec, variantId)}"`,
+        true
+      );
       return ok({
         ...summarizeCatalogPrompt(spec),
+        title: catalogPromptTitle(spec, variantId),
+        variant: variantId ?? null,
         content,
         variables: extractVariables(content),
       });
@@ -843,6 +878,11 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
       type: "object",
       properties: {
         id: { type: "string", description: "Catalog prompt id." },
+        variant: {
+          type: "string",
+          description:
+            "Optional role or industry version id, e.g. \"ux-designer\" for the cover letter prompt.",
+        },
         category: {
           type: "string",
           description: "Library category. Defaults to the catalog category's suggestion.",
@@ -857,21 +897,32 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
         logActivity("save_catalog_prompt", input, `No catalog prompt ${id}`, false);
         return fail(`No catalog prompt with id "${id}".`);
       }
-      const existing = promptStore.getAll().find((prompt) => prompt.sourceId === spec.id);
+      const variantId = str(input, "variant");
+      if (variantId && !findVariant(spec, variantId)) {
+        logActivity("save_catalog_prompt", input, `Unknown variant ${variantId}`, false);
+        return fail(
+          `"${spec.title}" has no variant "${variantId}". Available: ${
+            spec.variants?.options.map((option) => option.id).join(", ") || "none"
+          }.`
+        );
+      }
+      const sourceId = catalogSourceId(spec, variantId);
+      const title = catalogPromptTitle(spec, variantId);
+      const existing = promptStore.getAll().find((prompt) => prompt.sourceId === sourceId);
       if (existing) {
-        logActivity("save_catalog_prompt", input, `"${spec.title}" is already saved`, true);
+        logActivity("save_catalog_prompt", input, `"${title}" is already saved`, true);
         return ok({ saved: false, alreadySaved: true, prompt: summarize(existing) });
       }
       const category =
         str(input, "category") ?? getCategory(spec.categoryId)?.librarySuggestion ?? "General";
       categoryStore.ensure(category);
       const prompt = promptStore.create({
-        title: spec.title,
-        content: renderCatalogPrompt(spec),
+        title,
+        content: renderCatalogPrompt(spec, variantId),
         category,
-        sourceId: spec.id,
+        sourceId,
       });
-      logActivity("save_catalog_prompt", input, `Saved "${spec.title}" to ${category}`, true);
+      logActivity("save_catalog_prompt", input, `Saved "${title}" to ${category}`, true);
       return ok({ saved: true, prompt });
     },
   },

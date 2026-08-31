@@ -6,7 +6,12 @@
  * consistent in shape and can be re-rendered when the format improves.
  */
 
-import type { CatalogCategory, CatalogPromptSpec, Journey } from "./catalog";
+import type {
+  CatalogCategory,
+  CatalogPromptSpec,
+  Journey,
+  PromptVariantGroup,
+} from "./catalog";
 
 export const CATALOG_CATEGORIES: CatalogCategory[] = [
   {
@@ -134,6 +139,236 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
     ],
   },
 ];
+
+
+/**
+ * Role and industry versions, shared by the resume and cover letter prompts.
+ *
+ * Each one swaps in a reader who actually screens for that field, names the
+ * evidence that field cares about, and adds the step that evidence needs. The
+ * base prompt keeps its structure — only the specialisation changes.
+ */
+const APPLICATION_VARIANTS: PromptVariantGroup = {
+  label: "Industry or role",
+  options: [
+    {
+      id: "finance",
+      name: "Finance",
+      role: "a hiring manager in financial services who screens for accuracy, controls and regulatory awareness",
+      focus:
+        "This field screens for numerical accuracy, control environments and evidence you can be trusted with money and regulators.",
+      inputs: ["Systems and regulations I have worked with", "Value or risk I have quantified"],
+      steps: [
+        "Quantify everything possible — portfolio size, budget owned, variance reduced, audit findings closed.",
+        "Name the regulatory and control environment explicitly, and any qualifications in progress.",
+      ],
+    },
+    {
+      id: "marketing",
+      name: "Marketing",
+      role: "a marketing lead who has hired for channel and brand roles and distrusts vague claims",
+      focus:
+        "This field screens for channels you have actually run, budget you have owned, and results you can attribute.",
+      inputs: ["Channels I have run", "Budget managed", "Results with numbers"],
+      steps: [
+        "Lead with campaign outcomes and the metric moved, not the activity performed.",
+        "Distinguish work you led from work you supported, and name the budget scale.",
+      ],
+    },
+    {
+      id: "retail",
+      name: "Retail",
+      role: "a store or area manager who hires for the floor and cares about trading, service and reliability",
+      focus:
+        "This field screens for trading results, reliability through peak periods and how you handle customers under pressure.",
+      inputs: ["Store size or turnover", "Targets I hit", "Systems and shifts I have worked"],
+      steps: [
+        "Lead with sales results, conversion and service outcomes rather than duties.",
+        "Show reliability through peak trading, plus any keyholding or supervisory responsibility.",
+      ],
+    },
+    {
+      id: "chef",
+      name: "Chef / Kitchen",
+      role: "a head chef hiring for a working kitchen who cares about sections, volume and consistency",
+      focus:
+        "This field screens for the sections you can hold, covers you have run, food cost discipline and hygiene standards.",
+      inputs: ["Cuisines and sections I have run", "Covers per service", "Certifications held"],
+      steps: [
+        "State sections held, covers per service and the kitchen brigade you worked in.",
+        "Include food cost, waste or GP results, plus food hygiene certification and any allergen training.",
+      ],
+    },
+    {
+      id: "graphic-designer",
+      name: "Graphic Designer",
+      role: "a design director reviewing applications alongside portfolios",
+      focus:
+        "This field screens for craft, range and whether your portfolio backs the claims — the work is the argument.",
+      inputs: ["Portfolio link", "Tools I use", "Brands or clients I have worked on"],
+      steps: [
+        "Point to specific portfolio pieces that prove each claim, rather than describing them in prose.",
+        "Cover print and digital range, tools, and whether you built systems or one-off assets.",
+      ],
+    },
+    {
+      id: "ui-designer",
+      name: "UI Designer",
+      role: "a design lead hiring for interface craft, systems thinking and hand-off quality",
+      focus:
+        "This field screens for visual craft at component level, design system work and how cleanly you hand off to engineers.",
+      inputs: ["Portfolio link", "Design systems I have built or worked in", "Tools and hand-off process"],
+      steps: [
+        "Show component and system work, not just finished screens.",
+        "Describe hand-off: documentation, tokens, states covered and how engineers consumed the work.",
+      ],
+    },
+    {
+      id: "ux-designer",
+      name: "UX Designer",
+      role: "a UX lead who screens for research, decisions and outcomes rather than pretty screens",
+      focus:
+        "This field screens for process: the research you ran, the decision it drove and what changed as a result.",
+      inputs: ["Portfolio link", "Research methods I have run", "Outcomes I influenced"],
+      steps: [
+        "For each project, state the problem, the research, the decision it drove and the measured outcome.",
+        "Make your own contribution explicit where the work was collaborative.",
+      ],
+    },
+    {
+      id: "product-designer",
+      name: "UI/UX (Product) Designer",
+      role: "a product design manager hiring an end-to-end designer who can research, decide and ship",
+      focus:
+        "This field screens for the full arc — discovery through shipped interface — and for working closely with product and engineering.",
+      inputs: ["Portfolio link", "Products I have shipped", "How I work with product and engineering"],
+      steps: [
+        "Show the full arc on one project: discovery, definition, interface, ship, result.",
+        "Evidence collaboration with product and engineering, including trade-offs you accepted.",
+      ],
+    },
+    {
+      id: "ai-engineer",
+      name: "AI Engineer",
+      role: "an engineering lead hiring for applied AI who can tell shipped systems from notebooks",
+      focus:
+        "This field screens for production systems rather than demos: evaluation, cost, latency and what you did when the model was wrong.",
+      inputs: ["Models and frameworks I have shipped", "Evaluation approach I used", "Scale, latency or cost outcomes"],
+      steps: [
+        "Separate production systems from experiments, and give scale, latency and cost where known.",
+        "Describe how you evaluated quality and handled failure, hallucination or drift.",
+      ],
+    },
+    {
+      id: "software-engineer",
+      name: "Software Engineer",
+      role: "an engineering manager who screens for ownership, scale and judgement",
+      focus:
+        "This field screens for what you owned, the scale it ran at, and the engineering judgement behind your choices.",
+      inputs: ["Languages and stack", "Scale of the systems I worked on", "What I owned end to end"],
+      steps: [
+        "Name the systems you owned, their scale, and the decisions you made rather than the tickets you closed.",
+        "Include one example of a hard trade-off or production problem you resolved.",
+      ],
+    },
+    {
+      id: "data-analyst",
+      name: "Data Analyst",
+      role: "an analytics lead who screens for rigour and for analysis that changed a decision",
+      focus:
+        "This field screens for technical tooling plus evidence that your analysis actually changed what someone did.",
+      inputs: ["Tools and languages I use", "Stakeholders I worked with", "Decisions my analysis changed"],
+      steps: [
+        "Pair each technical skill with the business decision it informed.",
+        "Show how you handled messy data and communicated uncertainty to non-technical stakeholders.",
+      ],
+    },
+    {
+      id: "product-manager",
+      name: "Product Manager",
+      role: "a head of product who screens for shipped outcomes and clear prioritisation reasoning",
+      focus:
+        "This field screens for what you shipped, the metric it moved and how you decided what not to build.",
+      inputs: ["Products I have shipped", "Metrics I moved", "Team size and structure"],
+      steps: [
+        "Lead with shipped outcomes and the metric moved, not process frameworks.",
+        "Give one example of something you deliberately did not build, and why.",
+      ],
+    },
+    {
+      id: "sales",
+      name: "Sales",
+      role: "a sales director who reads applications for quota attainment above everything else",
+      focus:
+        "This field screens for numbers: quota, attainment, deal size and cycle length. Vagueness reads as underperformance.",
+      inputs: ["Quota and attainment", "Average deal size and cycle", "Territory, segment and CRM"],
+      steps: [
+        "Put quota and attainment percentages up front for each role.",
+        "Give deal size, sales cycle and segment so the reader can judge transferability.",
+      ],
+    },
+    {
+      id: "customer-support",
+      name: "Customer Support",
+      role: "a support manager who screens for volume handled, quality scores and de-escalation",
+      focus:
+        "This field screens for throughput and quality together — volume handled, satisfaction scores and how you handle angry customers.",
+      inputs: ["Ticket or call volume", "CSAT or quality scores", "Tools and channels"],
+      steps: [
+        "Give volume and quality metrics together, since either alone is unconvincing.",
+        "Include one concrete de-escalation or complex case you resolved.",
+      ],
+    },
+    {
+      id: "healthcare",
+      name: "Healthcare",
+      role: "a clinical or care manager who screens for registration, safety and patient outcomes",
+      focus:
+        "This field screens for current registration, safe practice and evidence of care quality. Compliance details are not optional.",
+      inputs: ["Registration or licence and expiry", "Settings and patient groups", "Compliance and mandatory training"],
+      steps: [
+        "State registration, licence number status and mandatory training up front.",
+        "Describe patient groups, settings and caseload, and any audit or safety improvement you contributed to.",
+      ],
+    },
+    {
+      id: "teaching",
+      name: "Teaching",
+      role: "a school leader who screens for qualifications, age groups taught and pupil outcomes",
+      focus:
+        "This field screens for qualifications, the ages and curriculum you have taught, and evidence of pupil progress.",
+      inputs: ["Qualifications and registration", "Age groups and subjects", "Pupil outcomes I contributed to"],
+      steps: [
+        "State qualification, registration and the age ranges and curricula you have taught.",
+        "Give evidence of pupil progress, plus any pastoral, SEN or extracurricular responsibility.",
+      ],
+    },
+    {
+      id: "operations",
+      name: "Admin / Operations",
+      role: "an operations manager who screens for reliability, systems fluency and process improvement",
+      focus:
+        "This field screens for volume handled reliably, the systems you know, and processes you actually improved.",
+      inputs: ["Systems and software I use", "Volume or scope I handled", "Processes I improved"],
+      steps: [
+        "Quantify the volume and scope you handled, and name the systems precisely.",
+        "Give one process you improved and the time or error reduction it produced.",
+      ],
+    },
+    {
+      id: "trades",
+      name: "Trades & Construction",
+      role: "a site or contracts manager who screens for tickets, site experience and safety record",
+      focus:
+        "This field screens for current tickets and licences, the site types you have worked, and a clean safety record.",
+      inputs: ["Tickets, licences and cards held", "Site types and project values", "Safety record and training"],
+      steps: [
+        "List current tickets, cards and licences with expiry dates first — they gate the application.",
+        "Give site types, project values and safety record, plus tools and equipment you are signed off on.",
+      ],
+    },
+  ],
+};
 
 export const CATALOG_PROMPTS: CatalogPromptSpec[] = [
   /* ---------------- E-commerce ---------------- */
@@ -860,6 +1095,7 @@ export const CATALOG_PROMPTS: CatalogPromptSpec[] = [
       "Order everything by relevance to the target role.",
     ],
     output: ["Rewritten resume", "Bullets needing numbers", "What I cut and why", "Summary line options"],
+    variants: APPLICATION_VARIANTS,
   },
   {
     id: "cr-cover",
@@ -878,6 +1114,7 @@ export const CATALOG_PROMPTS: CatalogPromptSpec[] = [
       "Close with a clear, unpushy next step.",
     ],
     output: ["Cover letter", "Alternative opening", "What I deliberately left out"],
+    variants: APPLICATION_VARIANTS,
   },
   {
     id: "cr-jd-match",
