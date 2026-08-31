@@ -12,6 +12,7 @@ import { attachmentContext, type UserAttachment } from "../lib/attachments";
 import { AttachmentPicker } from "./AttachmentPicker";
 import { AgentManager } from "./AgentManager";
 import { KnowledgeLibrary } from "./KnowledgeLibrary";
+import { PredictivePrompts } from "./PredictivePrompts";
 
 type Props = {
   onOpenPrompt: (id: string) => void;
@@ -369,6 +370,12 @@ export function PromptStudio({ onOpenPrompt }: Props) {
             </div>
           </section>
         )}
+
+        <PredictivePrompts
+          brief={brief}
+          agent={selectedAgent}
+          onOpenPrompt={onOpenPrompt}
+        />
       </main>
     </div>
   );

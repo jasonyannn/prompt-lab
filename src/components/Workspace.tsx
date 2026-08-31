@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePrompts } from "../hooks/usePrompts";
 import { useAgents } from "../hooks/useAgents";
+import { useCategories } from "../hooks/useCategories";
 import { promptStore } from "../lib/promptStore";
 import { agentStore } from "../lib/agentStore";
+import { categoryStore } from "../lib/categoryStore";
 import { WebMCPStatus } from "./WebMCPStatus";
 import { RightRail } from "./RightRail";
 import { PromptList, type SortKey } from "./PromptList";
@@ -21,6 +23,7 @@ export function Workspace({ webmcp, onHome }: Props) {
 
   const { prompts } = usePrompts();
   const { agents } = useAgents();
+  const { categories: savedCategories } = useCategories();
   const [view, setView] = useState<"library" | "studio">("library");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -32,9 +35,16 @@ export function Workspace({ webmcp, onHome }: Props) {
   const [creating, setCreating] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Saved categories stay selectable even before a prompt lands in them.
   const categories = useMemo(
-    () => [...new Set(prompts.map((prompt) => prompt.category))].sort(),
-    [prompts]
+    () =>
+      [
+        ...new Set([
+          ...savedCategories,
+          ...prompts.map((prompt) => prompt.category),
+        ]),
+      ].sort(),
+    [prompts, savedCategories]
   );
 
   const visible = useMemo(() => {
@@ -81,6 +91,7 @@ export function Workspace({ webmcp, onHome }: Props) {
     const blob = new Blob([JSON.stringify({
       version: 2,
       agents: agentStore.getAll(),
+      categories: categoryStore.getAll(),
       prompts: promptStore.getAll(),
     }, null, 2)], {
       type: "application/json",
@@ -110,8 +121,17 @@ export function Workspace({ webmcp, onHome }: Props) {
         agentStore.replaceAll(validAgents);
       }
 
+      if (!Array.isArray(parsed) && Array.isArray(parsed.categories)) {
+        categoryStore.replaceAll(
+          parsed.categories.filter(
+            (entry: unknown) => typeof entry === "string"
+          )
+        );
+      }
+
       for (const entry of entries) {
         if (typeof entry?.title === "string" && typeof entry?.content === "string") {
+          if (typeof entry.category === "string") categoryStore.ensure(entry.category);
           promptStore.create({
             title: entry.title,
             content: entry.content,

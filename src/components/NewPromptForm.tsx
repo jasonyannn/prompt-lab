@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { promptStore } from "../lib/promptStore";
+import { categoryStore } from "../lib/categoryStore";
+import { useCategories } from "../hooks/useCategories";
 import type { PromptAgent } from "../lib/agentStore";
 
 type Props = {
@@ -9,6 +11,7 @@ type Props = {
 };
 
 export function NewPromptForm({ onCreated, onCancel, agents }: Props) {
+  const { categories } = useCategories();
   const [title, setTitle] = useState("");
   const [category, setCategory] = useState("General");
   const [content, setContent] = useState("");
@@ -18,10 +21,12 @@ export function NewPromptForm({ onCreated, onCancel, agents }: Props) {
 
   function save() {
     if (!canSave) return;
+    const named = category.trim() || "General";
+    categoryStore.ensure(named);
     const prompt = promptStore.create({
       title: title.trim(),
       content: content.trim(),
-      category: category.trim() || "General",
+      category: named,
       agentId: agentId || undefined,
     });
     onCreated(prompt.id);
@@ -78,9 +83,15 @@ export function NewPromptForm({ onCreated, onCancel, agents }: Props) {
           <input
             id="new-category"
             className="input"
+            list="prompt-categories"
             value={category}
             onChange={(event) => setCategory(event.target.value)}
           />
+          <datalist id="prompt-categories">
+            {categories.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
         </div>
 
         <div className="field">
