@@ -286,9 +286,10 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                 <>
                   <strong>Sign in or create an account</strong>
                   <p className="signin-note">
-                    Optional — everything in Prompt Lab works signed out, and you
-                    can post to the forum anonymously. Signing in just lets posts
-                    carry your name. We email you a link; there is no password.
+                    There is no separate sign-up and no password — we email you a link,
+                    and it creates your account the first time. Everything in Prompt Lab
+                    works signed out; signing in just lets your forum posts carry your
+                    name.
                   </p>
                   <form
                     className="signin-row"
