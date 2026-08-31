@@ -5,9 +5,11 @@ import { build } from "esbuild";
 import { mkdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
+  chatWithModel,
   DEFAULT_EFFORT,
   DEFAULT_MODEL,
   generateWithModel,
+  parseChatRequest,
   parseGenerateRequest,
 } from "./server/openai";
 
@@ -65,7 +67,7 @@ function devModelRoutes(env: Record<string, string>) {
         if (url === "/api/model/status") {
           return send(res, 200, { ready: Boolean(apiKey), model, dev: true });
         }
-        if (url !== "/api/model/generate") {
+        if (url !== "/api/model/generate" && url !== "/api/model/chat") {
           return send(res, 404, { error: "Not found." });
         }
         if (req.method !== "POST") {
@@ -86,17 +88,24 @@ function devModelRoutes(env: Record<string, string>) {
           } catch {
             return send(res, 400, { error: "Invalid JSON body." });
           }
-          const parsed = parseGenerateRequest(body);
-          if (typeof parsed === "string") {
-            return send(res, 400, { error: parsed });
-          }
+          const config = {
+            apiKey,
+            model: env.OPENAI_MODEL,
+            effort: env.OPENAI_REASONING_EFFORT || DEFAULT_EFFORT,
+          };
           try {
-            const result = await generateWithModel(parsed, {
-              apiKey,
-              model: env.OPENAI_MODEL,
-              effort: env.OPENAI_REASONING_EFFORT || DEFAULT_EFFORT,
-            });
-            send(res, 200, result);
+            if (url === "/api/model/chat") {
+              const chat = parseChatRequest(body);
+              if (typeof chat === "string") {
+                return send(res, 400, { error: chat });
+              }
+              return send(res, 200, await chatWithModel(chat, config));
+            }
+            const parsed = parseGenerateRequest(body);
+            if (typeof parsed === "string") {
+              return send(res, 400, { error: parsed });
+            }
+            send(res, 200, await generateWithModel(parsed, config));
           } catch (error) {
             send(res, 502, {
               error: error instanceof Error ? error.message : "Generation failed.",

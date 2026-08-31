@@ -2,9 +2,11 @@ import { createMcpHandler } from "@modelcontextprotocol/server";
 import { ensureDatabase, listRemoteActivity } from "./database";
 import { createPromptLabMcpServer, REMOTE_TOOL_NAMES } from "./mcp";
 import {
+  chatWithModel,
   DEFAULT_EFFORT,
   DEFAULT_MODEL,
   generateWithModel,
+  parseChatRequest,
   parseGenerateRequest,
 } from "./openai";
 import type { Env } from "./env";
@@ -154,7 +156,7 @@ async function handleModel(request: Request, env: Env, pathname: string) {
     );
   }
 
-  if (pathname !== "/api/model/generate") {
+  if (pathname !== "/api/model/generate" && pathname !== "/api/model/chat") {
     return withHeaders(json({ error: "Not found." }, { status: 404 }), cors);
   }
   if (request.method !== "POST") {
@@ -180,17 +182,38 @@ async function handleModel(request: Request, env: Env, pathname: string) {
     return withHeaders(json({ error: "Invalid JSON body." }, { status: 400 }), cors);
   }
 
+  const config = {
+    apiKey: env.OPENAI_API_KEY,
+    model: env.OPENAI_MODEL,
+    effort: env.OPENAI_REASONING_EFFORT || DEFAULT_EFFORT,
+  };
+
+  if (pathname === "/api/model/chat") {
+    const chat = parseChatRequest(body);
+    if (typeof chat === "string") {
+      return withHeaders(json({ error: chat }, { status: 400 }), cors);
+    }
+    try {
+      return withHeaders(json(await chatWithModel(chat, config)), cors);
+    } catch (error) {
+      console.error("[model:chat]", error);
+      return withHeaders(
+        json(
+          { error: error instanceof Error ? error.message : "Chat failed." },
+          { status: 502 }
+        ),
+        cors
+      );
+    }
+  }
+
   const parsed = parseGenerateRequest(body);
   if (typeof parsed === "string") {
     return withHeaders(json({ error: parsed }, { status: 400 }), cors);
   }
 
   try {
-    const result = await generateWithModel(parsed, {
-      apiKey: env.OPENAI_API_KEY,
-      model: env.OPENAI_MODEL,
-      effort: env.OPENAI_REASONING_EFFORT || DEFAULT_EFFORT,
-    });
+    const result = await generateWithModel(parsed, config);
     return withHeaders(json(result), cors);
   } catch (error) {
     console.error("[model]", error);
