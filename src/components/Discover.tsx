@@ -145,7 +145,7 @@ export function Discover({ onOpenPrompt }: Props) {
           <span>{spec.summary}</span>
           {spec.variants && (
             <em className="variant-hint">
-              {spec.variants.options.length} role versions
+              {spec.variants.options.length} {spec.variants.noun} versions
             </em>
           )}
         </button>

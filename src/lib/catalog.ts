@@ -56,6 +56,8 @@ export type PromptVariant = {
 export type PromptVariantGroup = {
   /** Shown above the picker, e.g. "Industry or role". */
   label: string;
+  /** What one option is, for the card hint: "18 role versions". */
+  noun: string;
   options: PromptVariant[];
 };
 
