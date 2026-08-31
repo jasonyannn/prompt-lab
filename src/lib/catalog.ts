@@ -32,6 +32,33 @@ export type CatalogCategory = {
   librarySuggestion: string;
 };
 
+/**
+ * A role or industry version of a prompt.
+ *
+ * Rather than storing a separate prompt per industry, a variant layers a
+ * specialised role, the evidence that field actually screens for, and a step or
+ * two onto the base spec. One "Cover letter" prompt therefore covers finance,
+ * kitchens, UX and everything else without duplicating the structure.
+ */
+export type PromptVariant = {
+  id: string;
+  name: string;
+  /** Replaces the base spec's role. */
+  role: string;
+  /** One line on what this field cares about. */
+  focus: string;
+  /** Extra context lines, appended to the base inputs. */
+  inputs: string[];
+  /** Extra process steps, appended to the base steps. */
+  steps: string[];
+};
+
+export type PromptVariantGroup = {
+  /** Shown above the picker, e.g. "Industry or role". */
+  label: string;
+  options: PromptVariant[];
+};
+
 export type CatalogPromptSpec = {
   id: string;
   title: string;
@@ -48,6 +75,8 @@ export type CatalogPromptSpec = {
   inputs: string[];
   steps: string[];
   output: string[];
+  /** Role or industry versions of this prompt. */
+  variants?: PromptVariantGroup;
 };
 
 export type JourneyStep = {
@@ -97,11 +126,56 @@ function list(items: string[]) {
 }
 
 /**
+ * "an AI Engineer" but "a UI Designer" — U-initial names here read as "you",
+ * so they take the consonant article despite being a vowel letter.
+ */
+function article(name: string) {
+  return /^[aeio]/i.test(name) ? "an" : "a";
+}
+
+export function findVariant(
+  spec: CatalogPromptSpec,
+  variantId?: string | null
+): PromptVariant | undefined {
+  if (!variantId) return undefined;
+  return spec.variants?.options.find((option) => option.id === variantId);
+}
+
+/** "Cover letter" → "Cover letter — UX Designer". */
+export function catalogPromptTitle(
+  spec: CatalogPromptSpec,
+  variantId?: string | null
+): string {
+  const variant = findVariant(spec, variantId);
+  return variant ? `${spec.title} — ${variant.name}` : spec.title;
+}
+
+/** Each variant saves as its own library prompt, so it tracks its own id. */
+export function catalogSourceId(
+  spec: CatalogPromptSpec,
+  variantId?: string | null
+): string {
+  const variant = findVariant(spec, variantId);
+  return variant ? `${spec.id}:${variant.id}` : spec.id;
+}
+
+/**
  * Builds the full prompt text. Context lines are left as {{placeholders}} so a
  * saved prompt drops straight into the library's variables panel.
  */
-export function renderCatalogPrompt(spec: CatalogPromptSpec): string {
-  const context = spec.inputs
+export function renderCatalogPrompt(
+  spec: CatalogPromptSpec,
+  variantId?: string | null
+): string {
+  const variant = findVariant(spec, variantId);
+  const inputs = [...spec.inputs, ...(variant?.inputs ?? [])];
+  const steps = [...spec.steps, ...(variant?.steps ?? [])];
+  const role = variant?.role ?? spec.role;
+  const specialisation = variant
+    ? `\n\nSpecialisation\nThis is for ${article(variant.name)} ${variant.name} application. ${variant.focus}`
+    : "";
+
+  const context = inputs
     .map((label) => `- ${label}: {{${placeholderFor(label)}}}`)
     .join("\n");
 
@@ -110,10 +184,10 @@ export function renderCatalogPrompt(spec: CatalogPromptSpec): string {
       ? "Work through the stages in order. Finish each one before moving to the next, and summarise what was decided before you continue."
       : "Keep the result specific to the context above and short enough to act on today.";
 
-  return `Act as ${spec.role}.
+  return `Act as ${role}.
 
 Objective
-${spec.objective}
+${spec.objective}${specialisation}
 
 Context I am giving you
 ${context}
@@ -122,7 +196,7 @@ Before you begin
 Ask up to 3 concise questions only if a missing detail would materially change your answer. Otherwise state your assumptions and continue. Never invent facts, figures, quotes or research — mark anything that needs checking.
 
 ${spec.tier === "master" ? "Stages" : "Process"}
-${list(spec.steps)}
+${list(steps)}
 
 Return exactly
 ${list(spec.output)}

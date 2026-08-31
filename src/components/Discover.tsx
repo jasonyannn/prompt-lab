@@ -5,6 +5,9 @@ import { promptStore } from "../lib/promptStore";
 import { categoryStore } from "../lib/categoryStore";
 import { extractVariables } from "../lib/variables";
 import {
+  catalogPromptTitle,
+  catalogSourceId,
+  findVariant,
   getCategories,
   getCategory,
   getJourney,
@@ -47,6 +50,7 @@ export function Discover({ onOpenPrompt }: Props) {
   const [openPromptId, setOpenPromptId] = useState<string | null>(null);
   const [openJourneyId, setOpenJourneyId] = useState<string | null>(null);
   const [saveCategory, setSaveCategory] = useState<string | null>(null);
+  const [variantId, setVariantId] = useState<string | null>(null);
 
   const catalogCategories = getCategories();
   const counts = useMemo(() => categoryCounts(), []);
@@ -73,13 +77,17 @@ export function Discover({ onOpenPrompt }: Props) {
     return getCategory(spec.categoryId)?.librarySuggestion ?? "General";
   }
 
-  function save(spec: CatalogPromptSpec, category: string) {
+  function save(
+    spec: CatalogPromptSpec,
+    category: string,
+    variant?: string | null
+  ) {
     categoryStore.ensure(category);
     return promptStore.create({
-      title: spec.title,
-      content: renderCatalogPrompt(spec),
+      title: catalogPromptTitle(spec, variant),
+      content: renderCatalogPrompt(spec, variant),
       category,
-      sourceId: spec.id,
+      sourceId: catalogSourceId(spec, variant),
     });
   }
 
@@ -103,6 +111,7 @@ export function Discover({ onOpenPrompt }: Props) {
   function showPrompt(spec: CatalogPromptSpec) {
     setOpenPromptId(spec.id);
     setOpenJourneyId(null);
+    setVariantId(null);
     setSaveCategory(suggestionFor(spec));
   }
 
@@ -134,6 +143,11 @@ export function Discover({ onOpenPrompt }: Props) {
           </span>
           <strong>{spec.title}</strong>
           <span>{spec.summary}</span>
+          {spec.variants && (
+            <em className="variant-hint">
+              {spec.variants.options.length} role versions
+            </em>
+          )}
         </button>
         <div className="catalog-card-foot">
           <small>{getCategory(spec.categoryId)?.name}</small>
@@ -391,19 +405,23 @@ export function Discover({ onOpenPrompt }: Props) {
                   ))}
                 </select>
               </label>
-              {savedBySource[openPrompt.id] ? (
+              {savedBySource[catalogSourceId(openPrompt, variantId)] ? (
                 <button
                   className="btn btn-ghost saved-link"
-                  onClick={() => onOpenPrompt(savedBySource[openPrompt.id])}
+                  onClick={() =>
+                    onOpenPrompt(savedBySource[catalogSourceId(openPrompt, variantId)])
+                  }
                 >
                   In library · open →
                 </button>
               ) : (
                 <button
                   className="btn btn-primary"
-                  onClick={() => save(openPrompt, saveCategory ?? "General")}
+                  onClick={() =>
+                    save(openPrompt, saveCategory ?? "General", variantId)
+                  }
                 >
-                  Save to library
+                  Save{variantId ? " this version" : " to library"}
                 </button>
               )}
             </div>
@@ -412,16 +430,60 @@ export function Discover({ onOpenPrompt }: Props) {
               <span className={`tier-badge tier-${openPrompt.tier}`}>
                 {TIER_LABELS[openPrompt.tier]}
               </span>
-              <h3 className="catalog-detail-title">{openPrompt.title}</h3>
+              <h3 className="catalog-detail-title">
+                {catalogPromptTitle(openPrompt, variantId)}
+              </h3>
               <p className="catalog-detail-summary">{openPrompt.summary}</p>
+
+              {openPrompt.variants && (
+                <div className="variant-picker">
+                  <span className="label no-margin">
+                    {openPrompt.variants.label}
+                  </span>
+                  <div className="variant-options">
+                    <button
+                      className={`variant-chip${variantId === null ? " is-active" : ""}`}
+                      aria-pressed={variantId === null}
+                      onClick={() => setVariantId(null)}
+                    >
+                      General
+                    </button>
+                    {openPrompt.variants.options.map((option) => {
+                      const savedHere =
+                        savedBySource[catalogSourceId(openPrompt, option.id)];
+                      return (
+                        <button
+                          key={option.id}
+                          className={`variant-chip${variantId === option.id ? " is-active" : ""}${savedHere ? " is-saved" : ""}`}
+                          aria-pressed={variantId === option.id}
+                          title={savedHere ? "Already in your library" : option.focus}
+                          onClick={() => setVariantId(option.id)}
+                        >
+                          {option.name}
+                          {savedHere && <span aria-hidden="true"> ✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {findVariant(openPrompt, variantId) && (
+                    <p className="variant-focus">
+                      {findVariant(openPrompt, variantId)?.focus}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <p className="hint">
                 {TIER_BLURBS[openPrompt.tier]} Fill the{" "}
-                {extractVariables(renderCatalogPrompt(openPrompt)).length}{" "}
+                {
+                  extractVariables(renderCatalogPrompt(openPrompt, variantId))
+                    .length
+                }{" "}
                 placeholders once it's in your library and it becomes your own
                 version.
               </p>
               <pre className="catalog-prompt-text">
-                {renderCatalogPrompt(openPrompt)}
+                {renderCatalogPrompt(openPrompt, variantId)}
               </pre>
             </div>
           </section>

@@ -2434,6 +2434,66 @@ select {
   border-bottom: 1px solid var(--line-soft);
 }
 
+.variant-hint {
+  color: var(--accent);
+  font-size: 10.5px;
+  font-style: normal;
+}
+
+.variant-picker {
+  margin: 16px 0 4px;
+  padding: 13px;
+  border: 1px solid var(--line-soft);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.variant-options {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+
+.variant-chip {
+  padding: 5px 11px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11.5px;
+}
+
+.variant-chip:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.variant-chip.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.variant-chip.is-saved {
+  color: var(--good);
+}
+
+.variant-chip.is-active.is-saved {
+  border-color: var(--good);
+  background: var(--good-soft);
+  color: var(--good);
+}
+
+.variant-focus {
+  margin: 11px 0 0;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
 /* Agent manager ---------------------------------------------------------- */
 
 .agent-panel {
