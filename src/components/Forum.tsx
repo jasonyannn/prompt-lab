@@ -18,7 +18,6 @@ export function Forum() {
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("General");
   const [anonymous, setAnonymous] = useState(false);
-  const [authorName, setAuthorName] = useState("");
   const [loading, setLoading] = useState(false);
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -95,12 +94,10 @@ export function Forum() {
         tags: [],
         visibility: "public",
         anonymous: !user || anonymous,
-        author_name: authorName.trim(),
       });
       setTitle("");
       setContent("");
       setCategory("General");
-      setAuthorName("");
       setAnonymous(true);
       setMessage(user ? "Prompt published to the forum." : "Anonymous prompt published to the forum.");
       await loadPosts();
@@ -196,12 +193,6 @@ export function Forum() {
               Post anonymously
             </label>
 
-            <input
-              className="input"
-              placeholder="Display name (optional)"
-              value={authorName}
-              onChange={(event) => setAuthorName(event.target.value)}
-            />
           </div>
         )}
 
@@ -271,9 +262,7 @@ export function Forum() {
                   </button>
                 </div>
                 <div className="forum-post-meta">
-                  <span>
-                    {post.author_name ?? post.profiles?.display_name ?? "Anonymous"}
-                  </span>
+                  <span>{post.profiles?.display_name ?? "Anonymous"}</span>
                   <div className="forum-post-tools">
                     <button
                       className="like-button"
