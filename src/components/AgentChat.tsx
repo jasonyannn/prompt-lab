@@ -21,6 +21,8 @@ import { useModel } from "../hooks/useModel";
 import { useCategories } from "../hooks/useCategories";
 import { promptStore } from "../lib/promptStore";
 import { categoryStore } from "../lib/categoryStore";
+import { conversationStore, type Conversation } from "../lib/conversationStore";
+import { usePrompts } from "../hooks/usePrompts";
 
 const SUGGESTIONS = [
   "I'm building a design AI app. What prompts should I create?",
@@ -59,11 +61,21 @@ type Proposal = {
 export function AgentChat({ agents }: Props) {
   const hosted = useModel();
   const { categories } = useCategories();
+  const { prompts: libraryPrompts } = usePrompts();
   const [provider, setProvider] = useState<Provider>("hosted");
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [saveCategory, setSaveCategory] = useState<string | null>(null);
   const [newCategory, setNewCategory] = useState("");
   const [addingCategory, setAddingCategory] = useState(false);
+  const [conversations, setConversations] = useState<Conversation[]>(() =>
+    conversationStore.getAll()
+  );
+  const [conversationId, setConversationId] = useState<string>(() =>
+    crypto.randomUUID()
+  );
+  const [showHistory, setShowHistory] = useState(false);
+  const [showPrompts, setShowPrompts] = useState(false);
+  const [promptQuery, setPromptQuery] = useState("");
   const [status, setStatus] = useState<OllamaStatus>({ state: "checking" });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -91,6 +103,19 @@ export function AgentChat({ agents }: Props) {
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, busy]);
+
+  // Saved once a turn settles, so a half-finished exchange is not written twice.
+  useEffect(() => {
+    if (busy || messages.length === 0) return;
+    conversationStore.save(conversationId, messages, activeAgent?.id);
+    setConversations(conversationStore.getAll());
+  }, [messages, busy, conversationId, activeAgent?.id]);
+
+  useEffect(() => {
+    const refresh = () => setConversations(conversationStore.getAll());
+    window.addEventListener(conversationStore.eventName, refresh);
+    return () => window.removeEventListener(conversationStore.eventName, refresh);
+  }, []);
 
   async function send(text: string, displayAs?: string) {
     const trimmed = text.trim();
@@ -187,6 +212,50 @@ export function AgentChat({ agents }: Props) {
     setProposals((current) => current.filter((item) => !savedIds.has(item.id)));
   }
 
+  const visibleLibraryPrompts = (() => {
+    const query = promptQuery.trim().toLowerCase();
+    const matches = query
+      ? libraryPrompts.filter((prompt) =>
+          `${prompt.title} ${prompt.category}`.toLowerCase().includes(query)
+        )
+      : libraryPrompts;
+    return matches.slice(0, 30);
+  })();
+
+  /** Drops the prompt text into the composer so it can be edited before sending. */
+  function usePromptInChat(content: string) {
+    setInput((current) =>
+      current.trim() ? `${current.trim()}\n\n${content}` : content
+    );
+    setShowPrompts(false);
+    setPromptQuery("");
+  }
+
+  function newChat() {
+    setConversationId(crypto.randomUUID());
+    setMessages([]);
+    setProposals([]);
+    setAttachments([]);
+    setError(null);
+    setShowHistory(false);
+  }
+
+  function openConversation(conversation: Conversation) {
+    setConversationId(conversation.id);
+    setMessages(conversation.messages);
+    setProposals([]);
+    setAttachments([]);
+    setError(null);
+    setShowHistory(false);
+    if (conversation.agentId) setAgentId(conversation.agentId);
+  }
+
+  function deleteConversation(id: string) {
+    conversationStore.remove(id);
+    setConversations(conversationStore.getAll());
+    if (id === conversationId) newChat();
+  }
+
   function applyModel(value: string) {
     setModelState(value);
     setModel(value);
@@ -243,6 +312,58 @@ export function AgentChat({ agents }: Props) {
 
   return (
     <div className="chat">
+      <div className="chat-bar">
+        <button
+          className="btn btn-ghost chat-bar-button"
+          aria-expanded={showHistory}
+          onClick={() => setShowHistory((open) => !open)}
+        >
+          Chats · {conversations.length}
+        </button>
+        <div className="topbar-spacer" />
+        <button className="btn btn-ghost chat-bar-button" onClick={newChat}>
+          + New chat
+        </button>
+      </div>
+
+      {showHistory && (
+        <div className="chat-history">
+          {conversations.length === 0 ? (
+            <p className="knowledge-empty">
+              Saved chats appear here once you send a message.
+            </p>
+          ) : (
+            <ul>
+              {conversations.map((conversation) => (
+                <li
+                  key={conversation.id}
+                  className={conversation.id === conversationId ? "is-active" : ""}
+                >
+                  <button
+                    className="chat-history-open"
+                    onClick={() => openConversation(conversation)}
+                  >
+                    <strong title={conversation.title}>{conversation.title}</strong>
+                    <small>
+                      {new Date(conversation.updatedAt).toLocaleDateString()} ·{" "}
+                      {conversation.messages.filter((m) => m.role !== "tool").length}{" "}
+                      messages
+                    </small>
+                  </button>
+                  <button
+                    className="knowledge-remove"
+                    aria-label={`Delete chat ${conversation.title}`}
+                    onClick={() => deleteConversation(conversation.id)}
+                  >
+                    ×
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
       {hosted.ready && (
         <div className="provider-row">
           <div className="engine-toggle" role="group" aria-label="Agent model">
@@ -505,7 +626,50 @@ export function AgentChat({ agents }: Props) {
           attachments={attachments}
           onAttachmentsChange={setAttachments}
         />
+        {showPrompts && (
+          <div className="prompt-picker">
+            <div className="prompt-picker-head">
+              <strong>Your prompt library</strong>
+              <input
+                className="input"
+                aria-label="Search your prompts"
+                placeholder="Search prompts…"
+                autoFocus
+                value={promptQuery}
+                onChange={(event) => setPromptQuery(event.target.value)}
+              />
+            </div>
+            {visibleLibraryPrompts.length === 0 ? (
+              <p className="knowledge-empty">
+                {libraryPrompts.length === 0
+                  ? "Your library is empty. Save a prompt first."
+                  : "No prompts match that search."}
+              </p>
+            ) : (
+              <ul className="prompt-picker-list">
+                {visibleLibraryPrompts.map((prompt) => (
+                  <li key={prompt.id}>
+                    <button onClick={() => usePromptInChat(prompt.content)}>
+                      <strong title={prompt.title}>{prompt.title}</strong>
+                      <small>{prompt.category}</small>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
         <div className="chat-input">
+          <button
+            type="button"
+            className={`prompt-picker-toggle${showPrompts ? " is-active" : ""}`}
+            aria-expanded={showPrompts}
+            title="Insert a prompt from your library"
+            onClick={() => setShowPrompts((open) => !open)}
+          >
+            ⌘
+          </button>
           {agents.length > 0 && (
             <select
               className="chat-agent-select"
@@ -524,11 +688,20 @@ export function AgentChat({ agents }: Props) {
               ))}
             </select>
           )}
-          <input
-            className="input"
+          <textarea
+            className="input chat-textarea"
+            rows={1}
             placeholder="Ask a question or attach source material…"
             value={input}
             onChange={(event) => setInput(event.target.value)}
+            onKeyDown={(event) => {
+              // Enter sends; Shift+Enter is a newline, so pasted or inserted
+              // multi-line prompts stay intact.
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                void send(input);
+              }
+            }}
             disabled={busy}
             aria-label={usingHosted ? `Message the ${hosted.model} agent` : "Message the local agent"}
           />
