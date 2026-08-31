@@ -77,6 +77,9 @@ await document.modelContext.registerTool(tool, { signal: controller.signal });
 | `create_agent` | Create an expert role and working style |
 | `update_agent` | Edit an agent profile |
 | `generate_prompt_pack` | Turn a rough idea into four connected prompts |
+| `predict_prompts` | Suggest ranked follow-up prompts for a topic |
+| `list_categories` | List saved prompt categories |
+| `create_category` | Create a reusable category |
 | `delete_agent` | Remove an agent while keeping its prompts |
 | `search_prompts` | Keyword search across title, body and category |
 | `get_prompt` | Fetch one prompt in full |
