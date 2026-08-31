@@ -95,8 +95,25 @@ await document.modelContext.registerTool(tool, { signal: controller.signal });
 | `record_prompt_use` | Increment usage count when a prompt is actually used |
 | `render_prompt` | Fill a prompt's `{{placeholders}}` and return finished text |
 | `delete_prompt` | Remove a prompt (marked `destructiveHint`) |
+| `search_forum_posts` | Search the public forum by keyword, category and topic |
+| `list_forum_categories` | List forum categories with counts |
+| `get_forum_post` | Read one published forum post in full |
+| `list_forum_threads` | Group recent posts by category/thread |
+| `publish_forum_post` | Publish a new forum prompt or brief |
+| `draft_forum_post` | Save a forum draft without publishing it |
+| `save_forum_post_to_library` | Copy a forum post into the user's local library |
+| `generate_forum_summary` | Summarize a forum post and suggest tags |
+| `like_forum_post` / `unlike_forum_post` | Toggle a signed-in user's like state |
+| `get_forum_post_engagement` | Fetch like count and current user stance for a post |
+| `get_trending_forum_posts` | Rank the most popular forum posts |
+| `find_similar_posts` | Recommend similar prompt posts |
+| `suggest_prompt_improvements` | Offer prompt-quality suggestions for a forum entry |
+| `recommend_prompt_for_goal` | Recommend posts that match a goal or use case |
+| `flag_forum_post` / `report_forum_post` | Flag a post for human review |
+| `hide_forum_post` | Remove a post from public browsing while preserving moderation context |
+| `get_moderation_queue` | List posts that need review |
 
-The browser-side catalog tools let an agent discover public prompt journeys, inspect a specific catalog prompt, and bring it into the user's local library without leaving the page. Read-only tools carry `annotations.readOnlyHint`. Every tool has a full JSON Schema `inputSchema`, and failures return `isError: true` with a readable message rather than throwing.
+The browser-side catalog tools let an agent discover public prompt journeys, inspect a specific catalog prompt, and bring it into the user's local library without leaving the page. The forum tools turn the same browser environment into a discoverable prompt-sharing surface: the agent can search publicly published posts, save the best ones to the user's library, suggest improvements, and participate in moderation and engagement flow. Read-only tools carry `annotations.readOnlyHint`. Every tool has a full JSON Schema `inputSchema`, and failures return `isError: true` with a readable message rather than throwing.
 
 #### Catalog discovery and import tools
 
@@ -107,6 +124,24 @@ These five browser tools are the “library discovery” layer for the public pr
 - `get_catalog_prompt` — fetches one catalog prompt in full, including rendered content and the `{{variables}}` it expects. This is the read-detail step before saving or adapting a prompt.
 - `save_catalog_prompt` — copies an existing catalog prompt into the user's personal library so it can be edited, rendered, rated, and reused locally. This keeps the public catalog as a template source rather than mutating the original.
 - `start_journey` — opens a full journey (an ordered path of prompts for a goal) and optionally saves each step into the user's library. This is useful when the agent wants to hand the user a guided sequence rather than a single prompt.
+
+#### Forum discovery and sharing tools
+
+These tools extend Prompt Lab beyond the private library and into a public prompt-sharing loop:
+
+- `search_forum_posts` — find useful public prompt posts by keyword or category.
+- `get_forum_post` — read one full post, including content and like count.
+- `list_forum_threads` — group recent prompt discussions by category.
+- `publish_forum_post` — let an external agent publish a new prompt to the public forum.
+- `save_forum_post_to_library` — copy a public post into the user's personal library,
+  where it can be edited and reused locally.
+- `generate_forum_summary` — produce a high-level summary + tags for a post.
+- `like_forum_post` / `unlike_forum_post` — toggle social engagement when the current user is signed in.
+- `get_trending_forum_posts` — surface the currently most active posts.
+- `find_similar_posts` — recommend posts with similar structure or domain intent.
+- `recommend_prompt_for_goal` — turn a natural-language goal into an actionable recommendation.
+- `flag_forum_post` / `report_forum_post` — enable review workflows for low-quality or unsafe posts.
+- `hide_forum_post` / `get_moderation_queue` — support a moderator path for content review.
 
 ### Live UI refresh
 
