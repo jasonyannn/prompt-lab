@@ -1,3 +1,4 @@
+import { promptStore } from "./promptStore";
 import { supabase } from "./supabase";
 import type { ForumInsert, ForumPost } from "../types/forum";
 
@@ -6,10 +7,23 @@ export type SessionUser = {
   email?: string | null;
 };
 
+function normalizeForumPosts(data: any[] = []): ForumPost[] {
+  return data.map((post) => {
+    const total = post.forum_post_like_totals?.[0]?.like_count ?? 0;
+    return {
+      ...post,
+      like_count: total,
+      usage_count: total,
+    } as ForumPost;
+  });
+}
+
 export async function getPublishedPosts(): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
-    .select("*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)")
+    .select(
+      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+    )
     .eq("status", "published")
     .order("created_at", { ascending: false });
 
@@ -18,16 +32,165 @@ export async function getPublishedPosts(): Promise<ForumPost[]> {
     throw new Error(`Supabase forum query failed: ${detail}`);
   }
 
-  const posts = (data ?? []) as any[];
+  return normalizeForumPosts(data ?? []);
+}
 
-  return posts.map((post) => {
-    const total = post.forum_post_like_totals?.[0]?.like_count ?? 0;
-    return {
-      ...post,
-      like_count: total,
-      usage_count: total,
-    } as ForumPost;
+export async function searchForumPosts(
+  query?: string,
+  category?: string,
+  limit = 20
+): Promise<ForumPost[]> {
+  let request = supabase
+    .from("forum_posts")
+    .select(
+      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+    )
+    .eq("status", "published");
+
+  if (category) request = request.eq("category", category);
+  if (query && query.trim()) {
+    const term = query.trim();
+    request = request.or(`title.ilike.%${term}%,content.ilike.%${term}%`);
+  }
+
+  const { data, error } = await request
+    .order("created_at", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    const detail = error.message || "Unknown Supabase error";
+    throw new Error(`Supabase forum search failed: ${detail}`);
+  }
+
+  return normalizeForumPosts(data ?? []);
+}
+
+export async function getForumPostById(postId: string): Promise<ForumPost | null> {
+  const { data, error } = await supabase
+    .from("forum_posts")
+    .select(
+      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+    )
+    .eq("id", postId)
+    .eq("status", "published")
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    throw new Error(error.message || "Unknown forum lookup error");
+  }
+
+  if (!data) return null;
+  return normalizeForumPosts([data])[0];
+}
+
+export async function getForumCategories(): Promise<{ name: string; count: number }[]> {
+  const posts = await getPublishedPosts();
+  const counts = new Map<string, number>();
+  for (const post of posts) {
+    const name = post.category || "General";
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+
+  return [...counts.entries()].map(([name, count]) => ({ name, count }));
+}
+
+export async function getForumTrendingPosts(limit = 10): Promise<ForumPost[]> {
+  const posts = await getPublishedPosts();
+  return [...posts]
+    .sort((a, b) => Number(b.like_count ?? 0) - Number(a.like_count ?? 0))
+    .slice(0, limit);
+}
+
+export async function generateForumSummary(postId: string): Promise<{
+  id: string;
+  title: string;
+  summary: string;
+  keyPoints: string[];
+  suggestedTags: string[];
+} | null> {
+  const post = await getForumPostById(postId);
+  if (!post) return null;
+
+  const text = post.content.trim();
+  const preview = text.length > 280 ? `${text.slice(0, 280)}…` : text;
+  const keyPoints = [
+    post.title,
+    ...(post.category ? [`Category: ${post.category}`] : []),
+    ...(text.split(/\s+/).slice(0, 8).length > 0 ? [`Core idea: ${text.split(/\s+/).slice(0, 12).join(" ")}`] : []),
+  ];
+
+  const words = text.toLowerCase().match(/[a-z0-9]+/g) ?? [];
+  const tagCounts = new Map<string, number>();
+  for (const word of words) {
+    if (word.length < 5) continue;
+    tagCounts.set(word, (tagCounts.get(word) ?? 0) + 1);
+  }
+  const suggestedTags = [...tagCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([tag]) => tag);
+
+  return {
+    id: post.id,
+    title: post.title,
+    summary: preview,
+    keyPoints: keyPoints.slice(0, 3),
+    suggestedTags,
+  };
+}
+
+export async function saveForumPostToLibrary(postId: string, category?: string) {
+  const post = await getForumPostById(postId);
+  if (!post) {
+    return { saved: false, reason: "not_found" as const };
+  }
+
+  const existing = promptStore
+    .getAll()
+    .find(
+      (prompt) =>
+        prompt.sourceId === post.id ||
+        (prompt.title === post.title && prompt.content === post.content)
+    );
+
+  if (existing) {
+    return { saved: false, alreadySaved: true, prompt: existing };
+  }
+
+  const prompt = promptStore.create({
+    title: post.title,
+    content: post.content,
+    category: category ?? post.category ?? "General",
+    sourceId: post.id,
   });
+
+  return { saved: true, alreadySaved: false, prompt };
+}
+
+export async function getForumPostEngagement(postId: string) {
+  const post = await getForumPostById(postId);
+  const user = await getSessionUser().catch(() => null);
+
+  let likedByUser = false;
+  if (user) {
+    const { data, error } = await supabase
+      .from("forum_post_likes")
+      .select("id")
+      .eq("post_id", postId)
+      .eq("user_id", user.id)
+      .maybeSingle();
+    if (!error) likedByUser = Boolean(data);
+  }
+
+  return {
+    postId,
+    likeCount: post?.like_count ?? 0,
+    usageCount: post?.usage_count ?? 0,
+    likedByUser,
+    author: post?.profiles?.display_name ?? "Anonymous",
+    category: post?.category ?? "General",
+  };
 }
 
 export function subscribeToAuthState(callback: (user: SessionUser | null) => void) {
@@ -87,6 +250,81 @@ export async function createForumPost(input: ForumInsert) {
   return data as ForumPost;
 }
 
+export async function setForumLikeState(postId: string, liked: boolean) {
+  const user = await getSessionUser();
+  if (!user) {
+    throw new Error("You must be signed in to like a post.");
+  }
+
+  const { data: existingLike, error: findError } = await supabase
+    .from("forum_post_likes")
+    .select("id")
+    .eq("post_id", postId)
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (findError) throw findError;
+
+  const { data: current, error: fetchError } = await supabase
+    .from("forum_post_like_totals")
+    .select("like_count")
+    .eq("post_id", postId)
+    .maybeSingle();
+
+  if (fetchError) throw fetchError;
+  const currentCount = current?.like_count ?? 0;
+
+  if (liked) {
+    if (existingLike) {
+      return { liked: true, count: currentCount };
+    }
+
+    const { error: insertError } = await supabase
+      .from("forum_post_likes")
+      .insert({ post_id: postId, user_id: user.id });
+
+    if (insertError) throw insertError;
+
+    const nextCount = currentCount + 1;
+    if (current) {
+      const { error: updateError } = await supabase
+        .from("forum_post_like_totals")
+        .update({ like_count: nextCount })
+        .eq("post_id", postId);
+      if (updateError) throw updateError;
+    } else {
+      const { error: insertTotalError } = await supabase
+        .from("forum_post_like_totals")
+        .insert({ post_id: postId, like_count: 1 });
+      if (insertTotalError) throw insertTotalError;
+    }
+
+    return { liked: true, count: nextCount };
+  }
+
+  if (!existingLike) {
+    return { liked: false, count: currentCount };
+  }
+
+  const { error: deleteError } = await supabase
+    .from("forum_post_likes")
+    .delete()
+    .eq("id", existingLike.id);
+
+  if (deleteError) throw deleteError;
+
+  const nextCount = Math.max(0, currentCount - 1);
+  if (current) {
+    const { error: updateError } = await supabase
+      .from("forum_post_like_totals")
+      .update({ like_count: nextCount })
+      .eq("post_id", postId);
+    if (updateError) throw updateError;
+  }
+
+  return { liked: false, count: nextCount };
+}
+
 export async function toggleLike(postId: string) {
   const user = await getSessionUser();
   if (!user) {
@@ -102,68 +340,7 @@ export async function toggleLike(postId: string) {
 
   if (findError) throw findError;
 
-  if (existingLike) {
-    const { error: deleteError } = await supabase
-      .from("forum_post_likes")
-      .delete()
-      .eq("id", existingLike.id);
-
-    if (deleteError) throw deleteError;
-
-    const { data: current, error: fetchError } = await supabase
-      .from("forum_post_like_totals")
-      .select("like_count")
-      .eq("post_id", postId)
-      .single();
-
-    if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
-
-    const nextCount = Math.max(0, (current?.like_count ?? 0) - 1);
-
-    if (current) {
-      const { error: updateError } = await supabase
-        .from("forum_post_like_totals")
-        .update({ like_count: nextCount })
-        .eq("post_id", postId);
-
-      if (updateError) throw updateError;
-    }
-
-    return { liked: false, count: nextCount };
-  }
-
-  const { error: insertError } = await supabase
-    .from("forum_post_likes")
-    .insert({ post_id: postId, user_id: user.id });
-
-  if (insertError) throw insertError;
-
-  const { data: current, error: fetchError } = await supabase
-    .from("forum_post_like_totals")
-    .select("like_count")
-    .eq("post_id", postId)
-    .single();
-
-  if (fetchError && fetchError.code !== "PGRST116") throw fetchError;
-
-  const nextCount = (current?.like_count ?? 0) + 1;
-
-  if (current) {
-    const { error: updateError } = await supabase
-      .from("forum_post_like_totals")
-      .update({ like_count: nextCount })
-      .eq("post_id", postId);
-
-    if (updateError) throw updateError;
-  } else {
-    const { error: insertTotalError } = await supabase
-      .from("forum_post_like_totals")
-      .insert({ post_id: postId, like_count: 1 });
-
-    if (insertTotalError) throw insertTotalError;
-  }
-
-  return { liked: true, count: nextCount };
+  return setForumLikeState(postId, !existingLike);
 }
 
 export async function signInWithEmail(email: string) {

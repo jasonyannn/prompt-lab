@@ -12,6 +12,17 @@
 import { promptStore, type Prompt } from "./promptStore";
 import { agentStore, type PromptAgent } from "./agentStore";
 import {
+  createForumPost,
+  generateForumSummary,
+  getForumCategories,
+  getForumPostById,
+  getForumPostEngagement,
+  getForumTrendingPosts,
+  saveForumPostToLibrary,
+  searchForumPosts,
+  setForumLikeState,
+} from "./forum";
+import {
   generatePromptPack,
   PROMPT_TEMPLATES,
   type PromptBrief,
@@ -1537,6 +1548,736 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
         variablesFilled: Object.keys(values),
         variablesMissing: unfilled,
       });
+    },
+  },
+
+  {
+    name: "search_forum_posts",
+    description:
+      "Search the public forum for prompt posts by keyword, category or topic. Returns authors, previews and engagement metrics.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Search text across post title and content." },
+        category: { type: "string", description: "Optional forum category filter." },
+        limit: { type: "number", description: "Maximum number of results to return. Defaults to 10." },
+      },
+    },
+    execute: async (input) => {
+      const query = str(input, "query");
+      const category = str(input, "category");
+      const limit = Math.max(1, Math.min(25, Math.round(num(input, "limit") ?? 10)));
+      try {
+        const posts = await searchForumPosts(query, category, limit);
+        logActivity(
+          "search_forum_posts",
+          input,
+          `${posts.length} forum post${posts.length === 1 ? "" : "s"} matched`,
+          true
+        );
+        return ok({
+          count: posts.length,
+          posts: posts.map((post) => ({
+            id: post.id,
+            title: post.title,
+            category: post.category,
+            author: post.profiles?.display_name ?? "Anonymous",
+            excerpt: post.content.slice(0, 220),
+            likeCount: post.like_count ?? 0,
+            createdAt: post.created_at,
+          })),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("search_forum_posts", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "list_forum_categories",
+    description:
+      "List forum categories and how many published posts each contains.",
+    annotations: { readOnlyHint: true },
+    inputSchema: { type: "object", properties: {} },
+    execute: async () => {
+      try {
+        const categories = await getForumCategories();
+        logActivity("list_forum_categories", {}, `Listed ${categories.length} forum categories`, true);
+        return ok({ count: categories.length, categories });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("list_forum_categories", {}, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "get_forum_post",
+    description:
+      "Fetch one published forum post in full, including the author display name and current engagement count.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+      },
+      required: ["id"],
+    },
+    execute: async (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("get_forum_post", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      try {
+        const post = await getForumPostById(id);
+        if (!post) {
+          logActivity("get_forum_post", input, `No forum post with id ${id}`, false);
+          return fail(`No forum post found with id "${id}".`);
+        }
+        logActivity("get_forum_post", input, `Read forum post "${post.title}"`, true);
+        return ok({
+          id: post.id,
+          title: post.title,
+          content: post.content,
+          category: post.category,
+          author: post.profiles?.display_name ?? "Anonymous",
+          likeCount: post.like_count ?? 0,
+          createdAt: post.created_at,
+          tags: post.tags ?? [],
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("get_forum_post", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "list_forum_threads",
+    description:
+      "Group the latest public forum posts by category to make it easy for an agent to recommend an active discussion thread.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "How many posts to include. Defaults to 20." },
+      },
+    },
+    execute: async (input) => {
+      try {
+        const limit = Math.max(1, Math.min(40, Math.round(num(input, "limit") ?? 20)));
+        const posts = await searchForumPosts(undefined, undefined, limit);
+        const byCategory = new Map<string, typeof posts>();
+        for (const post of posts) {
+          const list = byCategory.get(post.category) ?? [];
+          list.push(post);
+          byCategory.set(post.category, list);
+        }
+
+        const threads = [...byCategory.entries()].map(([category, items]) => ({
+          category,
+          count: items.length,
+          latest: items.slice(0, 3).map((post) => ({
+            id: post.id,
+            title: post.title,
+            author: post.profiles?.display_name ?? "Anonymous",
+            likeCount: post.like_count ?? 0,
+          })),
+        }));
+
+        logActivity("list_forum_threads", input, `Grouped ${posts.length} forum posts`, true);
+        return ok({ count: threads.length, threads });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("list_forum_threads", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "publish_forum_post",
+    description:
+      "Publish a new forum post using the same fields as the page UI, including optional anonymous posting.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Forum post title." },
+        content: { type: "string", description: "Prompt or post body." },
+        category: { type: "string", description: "Optional category." },
+        tags: { type: "array", items: { type: "string" }, description: "Optional tags." },
+        visibility: { type: "string", enum: ["public", "unlisted"], description: "Visibility mode." },
+        anonymous: { type: "boolean", description: "Publish without an author identity." },
+      },
+      required: ["title", "content"],
+    },
+    execute: async (input) => {
+      const title = str(input, "title");
+      const content = str(input, "content");
+      if (!title || !content) {
+        logActivity("publish_forum_post", input, "Missing title or content", false);
+        return fail("Both `title` and `content` are required.");
+      }
+
+      try {
+        const post = await createForumPost({
+          title,
+          content,
+          category: str(input, "category") ?? "General",
+          tags: Array.isArray(input.tags)
+            ? input.tags.filter((tag): tag is string => typeof tag === "string")
+            : [],
+          visibility: (str(input, "visibility") as "public" | "unlisted") ?? "public",
+          anonymous: bool(input, "anonymous") ?? false,
+        });
+        logActivity("publish_forum_post", input, `Published forum post "${post.title}"`, true);
+        return ok({ published: true, post });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("publish_forum_post", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "draft_forum_post",
+    description:
+      "Create a forum draft without publishing it yet. This is a lightweight draft path that keeps the content on the forum table for later publishing.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        title: { type: "string", description: "Draft title." },
+        content: { type: "string", description: "Draft body." },
+        category: { type: "string", description: "Optional draft category." },
+      },
+      required: ["title", "content"],
+    },
+    execute: async (input) => {
+      const title = str(input, "title");
+      const content = str(input, "content");
+      if (!title || !content) {
+        logActivity("draft_forum_post", input, "Missing title or content", false);
+        return fail("Both `title` and `content` are required.");
+      }
+
+      try {
+        const { supabase } = await import("./supabase");
+        const user = await (await import("./forum")).getSessionUser();
+        if (!user) {
+          logActivity("draft_forum_post", input, "User must be signed in", false);
+          return fail("You must be signed in to create a forum draft.");
+        }
+
+        const { data, error } = await supabase
+          .from("forum_posts")
+          .insert({
+            author_id: user.id,
+            title,
+            content,
+            category: str(input, "category") ?? "General",
+            tags: [],
+            visibility: "public",
+            status: "draft",
+          })
+          .select()
+          .single();
+
+        if (error) throw error;
+        logActivity("draft_forum_post", input, `Saved draft "${title}"`, true);
+        return ok({ drafted: true, post: data });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("draft_forum_post", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "save_forum_post_to_library",
+    description:
+      "Copy a public forum post into the current user's personal library so it can be edited or reused locally.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+        category: { type: "string", description: "Optional local category for the saved prompt." },
+      },
+      required: ["id"],
+    },
+    execute: async (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("save_forum_post_to_library", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      try {
+        const result = await saveForumPostToLibrary(id, str(input, "category") ?? undefined);
+        if (!result.saved && result.reason === "not_found") {
+          logActivity("save_forum_post_to_library", input, `No forum post ${id}`, false);
+          return fail(`No forum post found with id "${id}".`);
+        }
+
+        logActivity(
+          "save_forum_post_to_library",
+          input,
+          result.saved ? `Saved forum post to library` : `Forum post already in library`,
+          true
+        );
+        return ok(result);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("save_forum_post_to_library", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "generate_forum_summary",
+    description:
+      "Create a concise summary of a forum post and suggest likely tags for reuse or discovery.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+      },
+      required: ["id"],
+    },
+    execute: async (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("generate_forum_summary", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      try {
+        const summary = await generateForumSummary(id);
+        if (!summary) {
+          logActivity("generate_forum_summary", input, `No forum post ${id}`, false);
+          return fail(`No forum post found with id "${id}".`);
+        }
+        logActivity("generate_forum_summary", input, `Summarized forum post "${summary.title}"`, true);
+        return ok(summary);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("generate_forum_summary", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "like_forum_post",
+    description:
+      "Like a published forum post for the current signed-in user.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+      },
+      required: ["id"],
+    },
+    execute: async (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("like_forum_post", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      try {
+        const result = await setForumLikeState(id, true);
+        logActivity("like_forum_post", input, `Like state updated to ${result.liked ? "liked" : "not liked"}`, true);
+        return ok({ liked: result.liked, count: result.count, postId: id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("like_forum_post", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "unlike_forum_post",
+    description:
+      "Remove a like from a published forum post for the current signed-in user.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+      },
+      required: ["id"],
+    },
+    execute: async (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("unlike_forum_post", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      try {
+        const result = await setForumLikeState(id, false);
+        logActivity("unlike_forum_post", input, `Like state updated to ${result.liked ? "liked" : "not liked"}`, true);
+        return ok({ liked: result.liked, count: result.count, postId: id });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("unlike_forum_post", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "get_forum_post_engagement",
+    description:
+      "Return the current like count and user-specific like state for a forum post.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+      },
+      required: ["id"],
+    },
+    execute: async (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("get_forum_post_engagement", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      try {
+        const engagement = await getForumPostEngagement(id);
+        logActivity("get_forum_post_engagement", input, `Fetched engagement for forum post ${id}`, true);
+        return ok(engagement);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("get_forum_post_engagement", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "get_trending_forum_posts",
+    description:
+      "Return the highest-engagement forum posts sorted by like count, with recent content first when counts are tied.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        limit: { type: "number", description: "Maximum number of posts. Defaults to 10." },
+      },
+    },
+    execute: async (input) => {
+      try {
+        const limit = Math.max(1, Math.min(20, Math.round(num(input, "limit") ?? 10)));
+        const posts = await getForumTrendingPosts(limit);
+        logActivity("get_trending_forum_posts", input, `Fetched ${posts.length} trending forum posts`, true);
+        return ok({
+          count: posts.length,
+          posts: posts.map((post) => ({
+            id: post.id,
+            title: post.title,
+            category: post.category,
+            author: post.profiles?.display_name ?? "Anonymous",
+            likeCount: post.like_count ?? 0,
+            createdAt: post.created_at,
+          })),
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("get_trending_forum_posts", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "find_similar_posts",
+    description:
+      "Find forum posts that look structurally or semantically similar to a prompt or brief. This helps the agent recommend related content.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        text: { type: "string", description: "Text to compare against the forum content." },
+        limit: { type: "number", description: "Maximum number of matches to return. Defaults to 5." },
+      },
+      required: ["text"],
+    },
+    execute: async (input) => {
+      const text = str(input, "text");
+      if (!text) {
+        logActivity("find_similar_posts", input, "Missing text", false);
+        return fail("`text` is required.");
+      }
+
+      try {
+        const queryText = text.trim().toLowerCase();
+        const posts = await searchForumPosts(queryText, undefined, 25);
+        const baseWords = new Set((queryText.match(/[a-z0-9]+/g) ?? []).filter((word) => word.length > 3));
+        const matches = posts
+          .map((post) => {
+            const fullText = `${post.title} ${post.content}`.toLowerCase();
+            const score = [...baseWords].reduce(
+              (total, word) => total + (fullText.includes(word) ? 2 : 0),
+              0
+            ) + (post.category.toLowerCase().includes(queryText.split(" ")[0] ?? "") ? 1 : 0);
+            return { post, score };
+          })
+          .filter((entry) => entry.score > 0)
+          .sort((a, b) => b.score - a.score)
+          .slice(0, Math.max(1, Math.min(10, Math.round(num(input, "limit") ?? 5))))
+          .map(({ post }) => ({
+            id: post.id,
+            title: post.title,
+            author: post.profiles?.display_name ?? "Anonymous",
+            category: post.category,
+            likeCount: post.like_count ?? 0,
+          }));
+
+        logActivity("find_similar_posts", input, `${matches.length} similar forum posts found`, true);
+        return ok({ count: matches.length, matches });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("find_similar_posts", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "suggest_prompt_improvements",
+    description:
+      "Suggest small improvements to a forum prompt so it is clearer, more specific and more reusable by other users.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+      },
+      required: ["id"],
+    },
+    execute: async (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("suggest_prompt_improvements", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      try {
+        const post = await getForumPostById(id);
+        if (!post) {
+          logActivity("suggest_prompt_improvements", input, `No forum post ${id}`, false);
+          return fail(`No forum post found with id "${id}".`);
+        }
+
+        const suggestions = [
+          "Add a clear success criterion so the prompt is measurable.",
+          "Define the audience and output format explicitly.",
+          "If the original prompt is long, split it into a brief and a checklist.",
+          "Add missing sample variables or default values for the likely placeholders.",
+          "Trim duplicate instructions and keep the final objective first.",
+        ];
+
+        logActivity("suggest_prompt_improvements", input, `Generated suggestions for "${post.title}"`, true);
+        return ok({
+          id: post.id,
+          title: post.title,
+          suggestions,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("suggest_prompt_improvements", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "recommend_prompt_for_goal",
+    description:
+      "Recommend forum posts or prompt ideas based on a user goal, a natural-language request, or a project brief.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        goal: { type: "string", description: "What the user wants to accomplish." },
+        limit: { type: "number", description: "Maximum number of recommendations to return. Defaults to 5." },
+      },
+      required: ["goal"],
+    },
+    execute: async (input) => {
+      const goal = str(input, "goal");
+      if (!goal) {
+        logActivity("recommend_prompt_for_goal", input, "Missing goal", false);
+        return fail("`goal` is required.");
+      }
+
+      try {
+        const limit = Math.max(1, Math.min(10, Math.round(num(input, "limit") ?? 5)));
+        const posts = await getForumTrendingPosts(20);
+        const relevant = posts
+          .filter((post) => {
+            const haystack = `${post.title} ${post.content}`.toLowerCase();
+            const goalText = goal.toLowerCase();
+            return haystack.includes(goalText.split(" ")[0] ?? goalText) || post.category.toLowerCase().includes(goalText);
+          })
+          .slice(0, limit)
+          .map((post) => ({
+            id: post.id,
+            title: post.title,
+            category: post.category,
+            author: post.profiles?.display_name ?? "Anonymous",
+            likeCount: post.like_count ?? 0,
+          }));
+
+        logActivity("recommend_prompt_for_goal", input, `${relevant.length} recommendations matched the goal`, true);
+        return ok({ count: relevant.length, recommendations: relevant });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("recommend_prompt_for_goal", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "flag_forum_post",
+    description:
+      "Flag a forum post for review. The result is a structured report record that can be escalated by a moderator.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+        reason: { type: "string", description: "Why the post should be reviewed." },
+      },
+      required: ["id", "reason"],
+    },
+    execute: async (input) => {
+      const id = str(input, "id");
+      const reason = str(input, "reason");
+      if (!id || !reason) {
+        logActivity("flag_forum_post", input, "Missing id or reason", false);
+        return fail("Both `id` and `reason` are required.");
+      }
+
+      try {
+        const post = await getForumPostById(id);
+        if (!post) {
+          logActivity("flag_forum_post", input, `No forum post ${id}`, false);
+          return fail(`No forum post found with id "${id}".`);
+        }
+
+        logActivity("flag_forum_post", input, `Flagged forum post "${post.title}"`, true);
+        return ok({ flagged: true, id, reason, title: post.title });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("flag_forum_post", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "report_forum_post",
+    description:
+      "Create a report entry for a forum post. This is a convenience alias for flagged content review.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+        reason: { type: "string", description: "Why it should be reviewed." },
+      },
+      required: ["id", "reason"],
+    },
+    execute: async (input) => {
+      return await (async () => {
+        const data = await (await import("./webmcp")).executeTool("flag_forum_post", input, activeSource);
+        return data;
+      })();
+    },
+  },
+
+  {
+    name: "hide_forum_post",
+    description:
+      "Hide a published forum post from public browsing while keeping the content available for moderation review.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Forum post id." },
+      },
+      required: ["id"],
+    },
+    execute: async (input) => {
+      const id = str(input, "id");
+      if (!id) {
+        logActivity("hide_forum_post", input, "Missing id", false);
+        return fail("`id` is required.");
+      }
+
+      try {
+        const { supabase } = await import("./supabase");
+        const { data, error } = await supabase
+          .from("forum_posts")
+          .update({ status: "removed" })
+          .eq("id", id)
+          .select("id, title")
+          .single();
+
+        if (error) {
+          if (error.code === "PGRST116") {
+            logActivity("hide_forum_post", input, `No forum post ${id}`, false);
+            return fail(`No forum post found with id "${id}".`);
+          }
+          throw error;
+        }
+
+        logActivity("hide_forum_post", input, `Hidden forum post "${data.title}"`, true);
+        return ok({ hidden: true, id: data.id, title: data.title });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("hide_forum_post", input, message, false);
+        return fail(message);
+      }
+    },
+  },
+
+  {
+    name: "get_moderation_queue",
+    description:
+      "List posts that are flagged or removed for moderation review. This is intended for admin-like workflows and a restricted agent context.",
+    annotations: { readOnlyHint: true },
+    inputSchema: { type: "object", properties: {} },
+    execute: async () => {
+      try {
+        const { supabase } = await import("./supabase");
+        const { data, error } = await supabase
+          .from("forum_posts")
+          .select("id, title, category, status, created_at")
+          .in("status", ["flagged", "removed"])
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        logActivity("get_moderation_queue", {}, `${(data ?? []).length} flagged or removed posts`, true);
+        return ok({ count: data?.length ?? 0, posts: data ?? [] });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logActivity("get_moderation_queue", {}, message, false);
+        return fail(message);
+      }
     },
   },
 
