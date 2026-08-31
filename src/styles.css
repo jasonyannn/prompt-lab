@@ -2618,6 +2618,26 @@ select {
   margin-top: 10px;
 }
 
+.rescue-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex-wrap: wrap;
+  margin: 0 11px 10px;
+  padding: 9px 11px;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.rescue-row span {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.rescue-row .btn {
+  margin-left: auto;
+}
+
 /* Agent manager ---------------------------------------------------------- */
 
 .agent-panel {
