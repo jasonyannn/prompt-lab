@@ -34,7 +34,7 @@ function clamp(value: number) {
 
 function extractExpectedSections(content: string) {
   const marker = content.match(
-    /(?:return exactly|output format|include(?: the following)?)[^\n]*\n([\s\S]*?)(?:\n\n|$)/i
+    /(?:return exactly|output format|include(?: the following)?|provide(?: the following)?)[^\n]*\n([\s\S]*?)(?:\n\n|$)/i
   );
   if (!marker?.[1]) return [];
   return marker[1]
@@ -71,23 +71,23 @@ export function evaluatePrompt(
     (content.length <= 8_000 ? 15 : 0);
 
   const specificityScore =
-    20 +
-    (has(lower, /\b(context|audience|user|platform|constraints?|inputs?|source material)\b/) ? 30 : 0) +
+    25 +
+    (has(lower, /\b(context|audience|users?|platform|constraints?|inputs?|source material|provided|interface)\b/) ? 30 : 0) +
     (variables.length > 0 ? 25 : 0) +
-    (has(content, /(?:^|\n)\s*(?:[-*•]|\d+[.)])\s+/m) ? 25 : 0);
+    (has(content, /(?:^|\n)\s*(?:[-*•]|\d+[.)])\s+/m) ? 20 : 0);
 
   const safetyScore =
-    30 +
+    50 +
     (has(lower, /\b(do not|never|avoid|must not)\b/) ? 25 : 0) +
-    (has(lower, /\b(assumptions?|uncertain|unknown|missing information)\b/) ? 20 : 0) +
-    (has(lower, /\b(untrusted|source|evidence|invent|privacy|sensitive)\b/) ? 25 : 0);
+    (has(lower, /\b(assumptions?|uncertain|unknown|missing information)\b/) ? 15 : 0) +
+    (has(lower, /\b(untrusted|source|evidence|invent|privacy|sensitive)\b/) ? 10 : 0);
 
   const completenessScore =
     10 +
     (has(lower, /\b(act as|role|you are)\b/) ? 20 : 0) +
     (has(lower, /\b(context|background|known)\b/) ? 20 : 0) +
-    (has(lower, /\b(process|steps?|first|then)\b/) ? 25 : 0) +
-    (has(lower, /\b(return|output|format|deliverable)\b/) ? 25 : 0);
+    (has(lower, /\b(process|steps?|first|then)\b/) || has(content, /(?:^|\n)\s*(?:[-*•]|\d+[.)])\s+/m) ? 25 : 0) +
+    (has(lower, /\b(return|output|format|deliverable|provide)\b/) ? 25 : 0);
 
   let consistencyScore =
     20 +

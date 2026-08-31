@@ -183,6 +183,7 @@ export function PromptStudio({ onOpenPrompt }: Props) {
                   <small>{template.eyebrow}</small>
                   <strong>{template.name}</strong>
                   <span>{template.description}</span>
+                  {template.requiresImage && <em>Image required</em>}
                 </button>
               ))}
             </div>
