@@ -25,6 +25,17 @@ import {
 } from "./attachments";
 import { knowledgeStore, type KnowledgeItem } from "./knowledgeStore";
 import { categoryStore } from "./categoryStore";
+import {
+  getCategories,
+  getCategory,
+  getJourney,
+  getJourneys,
+  getPrompt as getCatalogPrompt,
+  promptsInCategory,
+  renderCatalogPrompt,
+  searchCatalog,
+  type CatalogPromptSpec,
+} from "./catalog";
 import { detectSignals, predictPrompts } from "./predictivePrompts";
 import { evaluatePrompt } from "./promptEvaluator";
 import { extractVariables, renderPrompt } from "./variables";
@@ -250,6 +261,18 @@ function num(input: Record<string, unknown>, key: string): number | undefined {
 function bool(input: Record<string, unknown>, key: string): boolean | undefined {
   const value = input[key];
   return typeof value === "boolean" ? value : undefined;
+}
+
+function summarizeCatalogPrompt(spec: CatalogPromptSpec) {
+  return {
+    id: spec.id,
+    title: spec.title,
+    summary: spec.summary,
+    tier: spec.tier,
+    categoryId: spec.categoryId,
+    subcategoryId: spec.subcategoryId,
+    tags: spec.tags,
+  };
 }
 
 function summarizeAgent(agent: PromptAgent) {
@@ -675,6 +698,253 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
         true
       );
       return ok({ generated: prompts.length, saved: shouldSave, prompts });
+    },
+  },
+
+  {
+    name: "search_catalog",
+    description:
+      "Search the public prompt catalog by goal — what the user is trying to achieve, in their own words. Returns matching journeys (ordered paths of prompts) first, then individual prompts. Use this before writing a prompt from scratch.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        goal: {
+          type: "string",
+          description: 'What the user wants to do, e.g. "I want to start an online store".',
+        },
+      },
+      required: ["goal"],
+    },
+    execute: (input) => {
+      const goal = str(input, "goal");
+      if (!goal) {
+        logActivity("search_catalog", input, "Missing goal", false);
+        return fail("`goal` is required.");
+      }
+      const results = searchCatalog(goal);
+      logActivity(
+        "search_catalog",
+        input,
+        `${results.journeys.length} journeys and ${results.prompts.length} prompts matched "${goal}"`,
+        true
+      );
+      return ok({
+        journeys: results.journeys.slice(0, 5).map((entry) => ({
+          id: entry.journey.id,
+          name: entry.journey.name,
+          goal: entry.journey.goal,
+          outcome: entry.journey.outcome,
+          steps: entry.journey.steps.length,
+        })),
+        prompts: results.prompts.slice(0, 12).map((entry) => summarizeCatalogPrompt(entry.prompt)),
+      });
+    },
+  },
+
+  {
+    name: "browse_catalog",
+    description:
+      "Browse the public prompt catalog. With no arguments it lists the categories; with a category it lists that category's prompts and journeys. Prompt bodies come from get_catalog_prompt.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        category_id: { type: "string", description: "Category id from a previous call." },
+        subcategory_id: { type: "string", description: "Narrow to one subcategory." },
+        tier: {
+          type: "string",
+          enum: ["quick", "workflow", "master"],
+          description: "quick solves one task, workflow several, master runs a whole project.",
+        },
+      },
+    },
+    execute: (input) => {
+      const categoryId = str(input, "category_id");
+      if (!categoryId) {
+        const categories = getCategories().map((category) => ({
+          id: category.id,
+          name: category.name,
+          tagline: category.tagline,
+          subcategories: category.subcategories,
+          promptCount: promptsInCategory(category.id).length,
+        }));
+        logActivity("browse_catalog", input, `Listed ${categories.length} catalog categories`, true);
+        return ok({
+          categories,
+          journeys: getJourneys().map((journey) => ({
+            id: journey.id,
+            name: journey.name,
+            goal: journey.goal,
+            steps: journey.steps.length,
+          })),
+        });
+      }
+
+      const category = getCategory(categoryId);
+      if (!category) {
+        logActivity("browse_catalog", input, `No category ${categoryId}`, false);
+        return fail(`No catalog category with id "${categoryId}".`);
+      }
+      const tier = str(input, "tier");
+      const prompts = promptsInCategory(category.id, str(input, "subcategory_id")).filter(
+        (prompt) => !tier || prompt.tier === tier
+      );
+      logActivity(
+        "browse_catalog",
+        input,
+        `Listed ${prompts.length} prompts in ${category.name}`,
+        true
+      );
+      return ok({
+        category: { id: category.id, name: category.name, tagline: category.tagline },
+        journeys: getJourneys()
+          .filter((journey) => journey.categoryId === category.id)
+          .map((journey) => ({ id: journey.id, name: journey.name, steps: journey.steps.length })),
+        prompts: prompts.map(summarizeCatalogPrompt),
+      });
+    },
+  },
+
+  {
+    name: "get_catalog_prompt",
+    description:
+      "Read one catalog prompt in full, including its rendered text and the {{placeholders}} the user needs to fill in.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Catalog prompt id." },
+      },
+      required: ["id"],
+    },
+    execute: (input) => {
+      const id = str(input, "id");
+      const spec = id ? getCatalogPrompt(id) : undefined;
+      if (!spec) {
+        logActivity("get_catalog_prompt", input, `No catalog prompt ${id}`, false);
+        return fail(`No catalog prompt with id "${id}".`);
+      }
+      const content = renderCatalogPrompt(spec);
+      logActivity("get_catalog_prompt", input, `Read catalog prompt "${spec.title}"`, true);
+      return ok({
+        ...summarizeCatalogPrompt(spec),
+        content,
+        variables: extractVariables(content),
+      });
+    },
+  },
+
+  {
+    name: "save_catalog_prompt",
+    description:
+      "Save a catalog prompt into the user's library, where they can fill its placeholders and reuse it.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Catalog prompt id." },
+        category: {
+          type: "string",
+          description: "Library category. Defaults to the catalog category's suggestion.",
+        },
+      },
+      required: ["id"],
+    },
+    execute: (input) => {
+      const id = str(input, "id");
+      const spec = id ? getCatalogPrompt(id) : undefined;
+      if (!spec) {
+        logActivity("save_catalog_prompt", input, `No catalog prompt ${id}`, false);
+        return fail(`No catalog prompt with id "${id}".`);
+      }
+      const existing = promptStore.getAll().find((prompt) => prompt.sourceId === spec.id);
+      if (existing) {
+        logActivity("save_catalog_prompt", input, `"${spec.title}" is already saved`, true);
+        return ok({ saved: false, alreadySaved: true, prompt: summarize(existing) });
+      }
+      const category =
+        str(input, "category") ?? getCategory(spec.categoryId)?.librarySuggestion ?? "General";
+      categoryStore.ensure(category);
+      const prompt = promptStore.create({
+        title: spec.title,
+        content: renderCatalogPrompt(spec),
+        category,
+        sourceId: spec.id,
+      });
+      logActivity("save_catalog_prompt", input, `Saved "${spec.title}" to ${category}`, true);
+      return ok({ saved: true, prompt });
+    },
+  },
+
+  {
+    name: "start_journey",
+    description:
+      "Open a catalog journey — an ordered path of prompts from a goal to a result — and save its prompts to the library so the user can work through them in order.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Journey id from search_catalog or browse_catalog." },
+        category: { type: "string", description: "Library category for the saved prompts." },
+        save: { type: "boolean", description: "Save the journey's prompts. Defaults to true." },
+      },
+      required: ["id"],
+    },
+    execute: (input) => {
+      const id = str(input, "id");
+      const journey = id ? getJourney(id) : undefined;
+      if (!journey) {
+        logActivity("start_journey", input, `No journey ${id}`, false);
+        return fail(`No journey with id "${id}".`);
+      }
+      const shouldSave = bool(input, "save") ?? true;
+      const category =
+        str(input, "category") ??
+        getCategory(journey.categoryId)?.librarySuggestion ??
+        "General";
+      const existingBySource = new Set(
+        promptStore.getAll().map((prompt) => prompt.sourceId).filter(Boolean)
+      );
+
+      const steps = journey.steps.map((step, index) => {
+        const spec = getCatalogPrompt(step.promptId);
+        if (!spec) return null;
+        let savedId: string | undefined;
+        if (shouldSave && !existingBySource.has(spec.id)) {
+          categoryStore.ensure(category);
+          savedId = promptStore.create({
+            title: spec.title,
+            content: renderCatalogPrompt(spec),
+            category,
+            sourceId: spec.id,
+          }).id;
+        }
+        return {
+          step: index + 1,
+          why: step.note,
+          ...summarizeCatalogPrompt(spec),
+          savedPromptId: savedId,
+          alreadyInLibrary: existingBySource.has(spec.id),
+        };
+      });
+
+      const resolved = steps.filter(Boolean);
+      logActivity(
+        "start_journey",
+        input,
+        `${shouldSave ? "Started and saved" : "Opened"} journey "${journey.name}" (${resolved.length} steps)`,
+        true
+      );
+      return ok({
+        journey: {
+          id: journey.id,
+          name: journey.name,
+          goal: journey.goal,
+          outcome: journey.outcome,
+        },
+        saved: shouldSave,
+        category,
+        steps: resolved,
+      });
     },
   },
 
