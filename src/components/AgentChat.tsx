@@ -311,7 +311,7 @@ export function AgentChat({ agents }: Props) {
             value={input}
             onChange={(event) => setInput(event.target.value)}
             disabled={busy}
-            aria-label="Message the local agent"
+            aria-label={usingHosted ? `Message the ${hosted.model} agent` : "Message the local agent"}
           />
           <button
             className="btn btn-primary"

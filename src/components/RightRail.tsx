@@ -25,7 +25,7 @@ export function RightRail({ activity, tools, onClear, agents }: Props) {
           className={`tab${tab === "agent" ? " is-active" : ""}`}
           onClick={() => setTab("agent")}
         >
-          Local Agent
+          Agent
         </button>
         <button
           role="tab"

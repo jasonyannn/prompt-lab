@@ -124,11 +124,14 @@ export async function chat(
     const calls: FunctionCall[] = [];
     let text = "";
 
+    // The whole output goes back verbatim. A function_call cannot be replayed
+    // without the reasoning item that produced it, so cherry-picking items here
+    // makes the next round fail.
+    input.push(...output);
+
     for (const item of output) {
       if (item.type === "function_call") {
         calls.push(item as FunctionCall);
-        // Echoed back verbatim so the model can match its own call ids.
-        input.push(item);
         continue;
       }
       if (item.type === "message") {
@@ -150,7 +153,6 @@ export async function chat(
       })),
     };
 
-    if (text) input.push({ role: "assistant", content: text });
     if (text || calls.length > 0) {
       added.push(assistant);
       progress.onAssistant?.(assistant);
