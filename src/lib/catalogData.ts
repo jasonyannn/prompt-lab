@@ -150,6 +150,7 @@ export const CATALOG_CATEGORIES: CatalogCategory[] = [
  */
 const APPLICATION_VARIANTS: PromptVariantGroup = {
   label: "Industry or role",
+  noun: "role",
   options: [
     {
       id: "finance",
@@ -365,6 +366,190 @@ const APPLICATION_VARIANTS: PromptVariantGroup = {
       steps: [
         "List current tickets, cards and licences with expiry dates first — they gate the application.",
         "Give site types, project values and safety record, plus tools and equipment you are signed off on.",
+      ],
+    },
+  ],
+};
+
+
+/**
+ * Content niches, shared by the writing prompts.
+ *
+ * What you write about changes the reader, the evidence that earns trust, and
+ * the ways a piece can go wrong — a crypto post and a café review fail for
+ * completely different reasons. Each niche swaps in a writer who knows that
+ * audience and adds the checks that niche actually needs.
+ */
+const CONTENT_NICHE_VARIANTS: PromptVariantGroup = {
+  label: "Content niche",
+  noun: "niche",
+  options: [
+    {
+      id: "crypto",
+      name: "Crypto & Web3",
+      role: "a crypto writer who has lived through several hype cycles and whose readers can smell a shill instantly",
+      focus:
+        "This audience is sceptical and burned. Mechanism and risk earn trust; price predictions and hype destroy it.",
+      inputs: ["Chains, tokens or protocols I cover", "My own holdings or affiliations", "Reader knowledge level"],
+      steps: [
+        "Explain the mechanism before the opportunity, and name what would have to be true for it to work.",
+        "State risks and my disclosed position plainly. Never imply financial advice, guarantee returns or predict price.",
+      ],
+    },
+    {
+      id: "housing",
+      name: "Property & Housing",
+      role: "a property writer who covers the market for people trying to buy, rent or hold a home",
+      focus:
+        "This audience is making a large, slow, emotional decision. Local specifics and honest numbers beat national generalities.",
+      inputs: ["Market or city I cover", "Buyer, renter or investor audience", "Data sources I can cite"],
+      steps: [
+        "Anchor every claim to a specific market and period — national averages mislead at street level.",
+        "Show the arithmetic on costs, rates and yields, and mark anything that needs a professional or current data.",
+      ],
+    },
+    {
+      id: "food-review",
+      name: "Food Reviews",
+      role: "a restaurant critic who writes vivid, fair reviews and pays their own way",
+      focus:
+        "This audience wants to know whether to go. Sensory specifics and a clear verdict beat adjectives.",
+      inputs: ["Venue and cuisine", "What I ordered and what it cost", "Whether the visit was paid, comped or invited"],
+      steps: [
+        "Describe taste, texture and temperature concretely — 'crisp-edged, still soft inside', never 'delicious'.",
+        "Judge the place against its own ambition and price, disclose any comp or invitation, and end on who should go.",
+      ],
+    },
+    {
+      id: "cafe",
+      name: "Cafés & Coffee",
+      role: "a coffee writer who knows the difference between a good roast and a good room",
+      focus:
+        "This audience cares about the coffee and about whether they can actually sit and work there.",
+      inputs: ["Café and city", "Roaster, beans and brew methods", "What I visit a café for"],
+      steps: [
+        "Cover the coffee properly — roaster, origin, method, how it was pulled — before the interiors.",
+        "Answer the practical questions: seating, noise, power, wifi, laptop tolerance, best time to arrive.",
+      ],
+    },
+    {
+      id: "japan",
+      name: "Japan",
+      role: "a Japan-based writer who covers the country for outsiders without exoticising it",
+      focus:
+        "This audience is drowning in the same twelve recommendations. Specificity, seasonality and etiquette that is actually true are what stand out.",
+      inputs: ["Region or city", "Season and trip length", "Budget and Japanese ability"],
+      steps: [
+        "Be specific about region, season, access and booking reality — Japan changes enormously by both.",
+        "Use correct romanisation with the Japanese where it helps, explain etiquette as practical guidance, and avoid stereotype and 'weird Japan' framing.",
+      ],
+    },
+    {
+      id: "korea",
+      name: "Korea",
+      role: "a Korea-based writer covering the country beyond the K-pop and fried chicken shorthand",
+      focus:
+        "This audience wants what is current. Korea moves fast, and trend pieces date within months.",
+      inputs: ["City or neighbourhood", "Topic: food, culture, travel or industry", "How current the information must be"],
+      steps: [
+        "Name neighbourhoods rather than cities — Seoul is a collection of very different districts.",
+        "Use accurate romanisation and Hangul where it helps, date anything trend-dependent, and skip tired stereotypes.",
+      ],
+    },
+    {
+      id: "china",
+      name: "China",
+      role: "a writer covering China for readers whose picture of it is a decade out of date",
+      focus:
+        "This audience needs current, regionally specific and carefully sourced writing. China is not one place and generalisations fail immediately.",
+      inputs: ["Region or city", "Topic and angle", "Sources I can verify"],
+      steps: [
+        "Specify region and period, since conditions differ enormously across the country and change quickly.",
+        "Attribute claims to verifiable sources, note where information is contested or restricted, and avoid both boosterism and caricature.",
+      ],
+    },
+    {
+      id: "travel",
+      name: "Travel",
+      role: "a travel writer who has been to the places they recommend",
+      focus:
+        "This audience is planning something real. Logistics, cost and timing matter more than lyrical description.",
+      inputs: ["Destination", "Trip length and season", "Budget and travel style"],
+      steps: [
+        "Give the practical spine: getting there, getting around, where to base yourself, what to book ahead.",
+        "Mark anything that changes seasonally or needs checking before travel, and be honest about what is skippable.",
+      ],
+    },
+    {
+      id: "gym",
+      name: "Gym & Fitness",
+      role: "a fitness writer who programmes for ordinary people rather than for the algorithm",
+      focus:
+        "This audience is surrounded by confident nonsense. Mechanism, honest expectations and safety are the differentiators.",
+      inputs: ["Training style I cover", "Reader experience level", "Equipment they have access to"],
+      steps: [
+        "Explain why a method works, and give realistic timelines rather than transformation promises.",
+        "Include form cues, regressions and when to stop. Make no medical or nutritional claims — point to a professional instead.",
+      ],
+    },
+    {
+      id: "tech",
+      name: "Tech",
+      role: "a technology writer who reads the documentation before forming an opinion",
+      focus:
+        "This audience includes people who will know if you are bluffing. Precision about versions and trade-offs is the credibility test.",
+      inputs: ["Product, language or platform", "Reader technical level", "What I have actually used"],
+      steps: [
+        "Name versions and dates, and separate what you have used from what you have only read about.",
+        "Give the trade-off rather than the verdict, and say who each choice is wrong for.",
+      ],
+    },
+    {
+      id: "ai",
+      name: "AI",
+      role: "an AI writer who can tell a shipped system from a demo and a benchmark from a claim",
+      focus:
+        "This field is saturated with hype and moves weekly. Concrete capability, cost and failure modes are what readers cannot get elsewhere.",
+      inputs: ["Models or tools I am covering", "Reader technical level", "What I have tested myself"],
+      steps: [
+        "Name exact models and dates — 'AI can now' is meaningless within a month.",
+        "Report what you tested and how, including failure cases, cost and latency. Distinguish capability from marketing and avoid both doom and boosterism.",
+      ],
+    },
+    {
+      id: "gaming",
+      name: "Gaming",
+      role: "a games writer who plays to the end before writing",
+      focus:
+        "This audience spots reviews written from a press kit. Hours played, platform and patch state are the credibility markers.",
+      inputs: ["Game and platform", "Hours played and progress", "Genre expectations of my readers"],
+      steps: [
+        "State platform, hours played, patch version and whether the code was provided.",
+        "Judge the game against its genre and price, and flag spoilers explicitly before they appear.",
+      ],
+    },
+    {
+      id: "personal-finance",
+      name: "Personal Finance",
+      role: "a money writer who explains rather than sells, and never pretends to be an adviser",
+      focus:
+        "This audience is making decisions with real consequences. Clarity, disclosure and honest limits matter more than confidence.",
+      inputs: ["Country and tax context", "Reader's financial situation", "Any affiliate or commercial relationships"],
+      steps: [
+        "Anchor to a country and tax year — rules do not travel — and show the arithmetic behind any number.",
+        "Disclose affiliations, state clearly that this is general information rather than financial advice, and name when a professional is needed.",
+      ],
+    },
+    {
+      id: "fashion-beauty",
+      name: "Fashion & Beauty",
+      role: "a fashion and beauty writer whose readers can tell a paid post from an honest one",
+      focus:
+        "This audience rewards specificity about fit, formulation and longevity, and punishes undisclosed sponsorship.",
+      inputs: ["Category and price bracket", "My own fit, skin type or colouring", "Gifted, paid or bought"],
+      steps: [
+        "Be specific about sizing, fabric, formulation and how it wore or wore off over real use.",
+        "Disclose gifting, affiliate links or sponsorship up front, and say who the product will not suit.",
       ],
     },
   ],
@@ -1530,6 +1715,7 @@ export const CATALOG_PROMPTS: CatalogPromptSpec[] = [
       "Note which ones only I could credibly write.",
     ],
     output: ["Twelve angles", "The point of view in each", "Which are uniquely mine", "The three to write first"],
+    variants: CONTENT_NICHE_VARIANTS,
   },
   {
     id: "wr-outline",
@@ -1549,6 +1735,7 @@ export const CATALOG_PROMPTS: CatalogPromptSpec[] = [
       "Note where evidence or an example is required.",
     ],
     output: ["The argument", "Section outline", "Evidence needed", "What I cut", "Opening line options"],
+    variants: CONTENT_NICHE_VARIANTS,
   },
   {
     id: "wr-draft",
@@ -1568,6 +1755,7 @@ export const CATALOG_PROMPTS: CatalogPromptSpec[] = [
       "Avoid the constructions that make writing sound machine-made.",
     ],
     output: ["Full draft", "Voice notes", "Placeholders needing my input", "Two alternative openings"],
+    variants: CONTENT_NICHE_VARIANTS,
   },
   {
     id: "wr-edit",
@@ -1624,6 +1812,7 @@ export const CATALOG_PROMPTS: CatalogPromptSpec[] = [
       "Adapt length and tone to the platform's actual conventions.",
     ],
     output: ["Series thesis", "Post drafts", "Hook alternatives", "Posting order", "How to reuse this elsewhere"],
+    variants: CONTENT_NICHE_VARIANTS,
   },
   {
     id: "wr-master",
@@ -1653,6 +1842,7 @@ export const CATALOG_PROMPTS: CatalogPromptSpec[] = [
       "Reuse system",
       "Metrics",
     ],
+    variants: CONTENT_NICHE_VARIANTS,
   },
 
   /* ---------------- Productivity ---------------- */
