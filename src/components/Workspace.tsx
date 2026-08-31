@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePrompts } from "../hooks/usePrompts";
 import { useAgents } from "../hooks/useAgents";
 import { useCategories } from "../hooks/useCategories";
+import { useAuth } from "../hooks/useAuth";
 import { promptStore } from "../lib/promptStore";
 import { agentStore } from "../lib/agentStore";
 import { categoryStore } from "../lib/categoryStore";
@@ -28,6 +29,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   const { prompts } = usePrompts();
   const { agents } = useAgents();
   const { categories: savedCategories } = useCategories();
+  const { user, signOut } = useAuth();
   const [view, setView] = useState<"discover" | "library" | "studio" | "forum">(
     "discover"
   );
@@ -212,6 +214,15 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
             event.target.value = "";
           }}
         />
+
+        {user && (
+          <div className="account-chip">
+            <span title={user.email ?? "Signed in"}>{user.email ?? "Signed in"}</span>
+            <button className="btn btn-ghost" onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </div>
+        )}
 
         <WebMCPStatus
           ready={ready}

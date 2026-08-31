@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useAuth } from "../hooks/useAuth";
 import { PROMPT_TOOLS } from "../lib/webmcp";
 import type { WebMCPState } from "../hooks/useWebMCP";
 import type { RemoteMCPState } from "../hooks/useRemoteMCP";
@@ -96,6 +97,33 @@ function Section({
 }
 
 export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
+  const { user, checking, signIn, signOut } = useAuth();
+  const [email, setEmail] = useState("");
+  const [authState, setAuthState] = useState<
+    { kind: "idle" | "sending" } | { kind: "sent" | "error"; text: string }
+  >({ kind: "idle" });
+
+  async function submitSignIn() {
+    const address = email.trim();
+    if (!address) {
+      setAuthState({ kind: "error", text: "Enter your email address." });
+      return;
+    }
+    setAuthState({ kind: "sending" });
+    try {
+      await signIn(address);
+      setAuthState({
+        kind: "sent",
+        text: `Sign-in link sent to ${address}. Open it on this device.`,
+      });
+    } catch (caught) {
+      setAuthState({
+        kind: "error",
+        text: caught instanceof Error ? caught.message : "Could not send the link.",
+      });
+    }
+  }
+
   const [openTool, setOpenTool] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [copiedEndpoint, setCopiedEndpoint] = useState(false);
@@ -197,6 +225,9 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
             <button className="btn btn-primary btn-lg" onClick={onEnter}>
               Open the app →
             </button>
+            <a className="btn btn-lg btn-quiet" href="#signin">
+              {user ? "Your account" : "Sign in"}
+            </a>
             <a className="btn btn-lg btn-quiet" href="#tools">
               Explore the tools
             </a>
@@ -381,6 +412,69 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
             browser-native WebMCP in a supported browser, or run the optional
             local Llama agent inside the app.
           </p>
+          <div className="signin-card" id="signin">
+            {checking ? (
+              <p className="signin-note">Checking your session…</p>
+            ) : user ? (
+              <>
+                <strong>Signed in as {user.email ?? "your account"}</strong>
+                <p className="signin-note">
+                  Your forum posts will be published under this account. You can
+                  sign out from inside the app at any time.
+                </p>
+                <div className="signin-row">
+                  <button className="btn btn-primary" onClick={onEnter}>
+                    Open the app →
+                  </button>
+                  <button className="btn btn-quiet" onClick={() => void signOut()}>
+                    Sign out
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <strong>Sign in to publish under your name</strong>
+                <p className="signin-note">
+                  Optional — everything in Prompt Lab works signed out, and you
+                  can post to the forum anonymously. Signing in just lets posts
+                  carry your name. We email you a link; there is no password.
+                </p>
+                <form
+                  className="signin-row"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void submitSignIn();
+                  }}
+                >
+                  <input
+                    className="input"
+                    type="email"
+                    autoComplete="email"
+                    aria-label="Email address"
+                    placeholder="you@example.com"
+                    value={email}
+                    onChange={(event) => setEmail(event.target.value)}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    type="submit"
+                    disabled={authState.kind === "sending"}
+                  >
+                    {authState.kind === "sending" ? "Sending…" : "Email me a link"}
+                  </button>
+                </form>
+              </>
+            )}
+            {"text" in authState && (
+              <p
+                className={`signin-note${authState.kind === "error" ? " is-bad" : " is-good"}`}
+                role="status"
+              >
+                {authState.text}
+              </p>
+            )}
+          </div>
+
           <button className="btn btn-primary btn-lg" onClick={onEnter}>
             Open the app →
           </button>

@@ -3,9 +3,7 @@ import {
   createForumPost,
   getPublishedPosts,
   getSessionUser,
-  signInWithEmail,
   toggleLike,
-  signOut,
   subscribeToAuthState,
 } from "../lib/forum";
 import type { ForumPost } from "../types/forum";
@@ -13,7 +11,6 @@ import type { ForumPost } from "../types/forum";
 export function Forum() {
   const [posts, setPosts] = useState<ForumPost[]>([]);
   const [user, setUser] = useState<{ id: string; email?: string | null } | null>(null);
-  const [email, setEmail] = useState("");
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [category, setCategory] = useState("General");
@@ -61,23 +58,6 @@ export function Forum() {
     }
   }
 
-  async function handleLogin() {
-    if (!email.trim()) {
-      setError("Please enter an email.");
-      return;
-    }
-
-    try {
-      setError(null);
-      setMessage(null);
-      await signInWithEmail(email.trim());
-      setMessage("Check your email for the sign-in link.");
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : "Unknown sign-in error";
-      setError(`${detail}. Check Auth > Providers > Email and Authentication > URL Configuration.`);
-    }
-  }
-
   async function handleCreatePost() {
     if (!title.trim() || !content.trim()) {
       setError("Title and prompt are required.");
@@ -105,17 +85,6 @@ export function Forum() {
       setError(err instanceof Error ? err.message : "Could not publish the post.");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleSignOut() {
-    try {
-      setError(null);
-      await signOut();
-      setUser(null);
-      setMessage("Signed out.");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Sign-out failed.");
     }
   }
 
@@ -159,42 +128,29 @@ export function Forum() {
       </div>
 
       <div className="panel-body">
-        {!user ? (
-          <div className="forum-auth-box">
-            <p>Sign in to publish as yourself, or post anonymously without an account.</p>
-            <input
-              className="input"
-              type="email"
-              placeholder="you@example.com"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-            />
-            <button className="btn btn-ghost" onClick={() => void handleLogin()}>
-              Send sign-in link
-            </button>
-          </div>
-        ) : (
-          <div className="forum-compose">
-            <p>Signed in as {user.email ?? "your account"}</p>
-            <button className="btn btn-ghost" onClick={() => void handleSignOut()}>
-              Sign out
-            </button>
-          </div>
-        )}
-
-        {!user && (
-          <div className="forum-compose">
-            <label className="checkbox-row">
-              <input
-                type="checkbox"
-                checked={anonymous}
-                onChange={(event) => setAnonymous(event.target.checked)}
-              />
-              Post anonymously
-            </label>
-
-          </div>
-        )}
+        <div className="forum-identity">
+          {user ? (
+            <p>
+              Posting as <strong>{user.email ?? "your account"}</strong>. Sign out
+              from the top bar.
+            </p>
+          ) : (
+            <>
+              <p>
+                You are posting anonymously. To publish under your name, sign in
+                from the <a href="#/">home page</a>.
+              </p>
+              <label className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={anonymous}
+                  onChange={(event) => setAnonymous(event.target.checked)}
+                />
+                Post anonymously
+              </label>
+            </>
+          )}
+        </div>
 
         <div className="forum-compose">
 
