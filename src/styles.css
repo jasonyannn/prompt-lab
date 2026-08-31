@@ -677,6 +677,38 @@ select {
   font-weight: 600;
 }
 
+.chip-add {
+  border-style: dashed;
+  color: var(--text-faint);
+}
+
+.chip-add:hover:not(:disabled) {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.chip-add:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.chip-form {
+  display: flex;
+  gap: 4px;
+}
+
+.chip-input {
+  width: 116px;
+  padding: 3px 9px;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  outline: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11.5px;
+}
+
 .select {
   width: 100%;
   padding: 7px 10px;

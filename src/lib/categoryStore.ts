@@ -1,24 +1,45 @@
 /**
  * Library categories.
  *
- * Every user starts with the same seven, then adds their own. Prompt categories
+ * Every user starts with the same defaults, then adds their own. Prompt categories
  * are still plain strings on the prompt itself — this store only tracks the set
  * a user can choose from, so a freshly created (and still empty) category
  * survives a reload and shows up in the library filter.
  */
 
 export const DEFAULT_CATEGORIES = [
+  "Accounting",
+  "Business",
+  "Career",
   "Coding",
-  "Personal",
-  "Finance",
-  "Marketing",
   "Design",
-  "Security",
+  "E-commerce",
+  "Education",
+  "Finance",
+  "Health",
   "Hobbies",
+  "Marketing",
+  "Personal",
+  "Productivity",
+  "Relationships",
+  "Security",
+  "Tax",
+  "Writing",
 ];
 
 const STORAGE_KEY = "promptlab_categories";
 const UPDATED_EVENT = "promptlab:categories-updated";
+
+/**
+ * Bumped whenever DEFAULT_CATEGORIES gains entries. On read, a stored list from
+ * an older seed is merged with the current defaults, so existing users pick up
+ * new categories instead of being stuck with whatever shipped first. Custom
+ * categories are always preserved; a default someone deleted does come back
+ * once, which is the price of keeping the merge this simple.
+ */
+const SEED_VERSION = 2;
+
+type StoredCategories = { version: number; categories: string[] };
 
 function normalise(name: string) {
   return name.replace(/\s+/g, " ").trim().slice(0, 32);
@@ -36,21 +57,53 @@ function dedupe(names: string[]) {
   return result;
 }
 
+function persist(categories: string[]) {
+  const payload: StoredCategories = { version: SEED_VERSION, categories };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
+}
+
+/** Keeps the user's own order, then appends defaults they do not have yet. */
+function mergeWithDefaults(existing: string[]) {
+  const known = new Set(existing.map((name) => name.toLowerCase()));
+  return [
+    ...existing,
+    ...DEFAULT_CATEGORIES.filter((name) => !known.has(name.toLowerCase())),
+  ];
+}
+
 function read(): string[] {
   const saved = localStorage.getItem(STORAGE_KEY);
   if (!saved) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_CATEGORIES));
+    persist(DEFAULT_CATEGORIES);
     return [...DEFAULT_CATEGORIES];
   }
 
   try {
-    const parsed = JSON.parse(saved);
-    if (!Array.isArray(parsed)) return [...DEFAULT_CATEGORIES];
+    const parsed: unknown = JSON.parse(saved);
+
+    // Version 1 stored a bare array.
+    const stored = Array.isArray(parsed)
+      ? { version: 1, categories: parsed }
+      : (parsed as StoredCategories);
+
+    if (!stored || !Array.isArray(stored.categories)) {
+      persist(DEFAULT_CATEGORIES);
+      return [...DEFAULT_CATEGORIES];
+    }
+
     const names = dedupe(
-      parsed
+      stored.categories
         .filter((entry): entry is string => typeof entry === "string")
         .map(normalise)
+        .filter(Boolean)
     );
+
+    if ((stored.version ?? 1) < SEED_VERSION) {
+      const merged = mergeWithDefaults(names);
+      persist(merged);
+      return merged;
+    }
+
     return names.length > 0 ? names : [...DEFAULT_CATEGORIES];
   } catch {
     return [...DEFAULT_CATEGORIES];
@@ -58,7 +111,7 @@ function read(): string[] {
 }
 
 function write(categories: string[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(categories));
+  persist(categories);
   window.dispatchEvent(new CustomEvent(UPDATED_EVENT));
 }
 
