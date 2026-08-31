@@ -37,9 +37,9 @@ comes *before* "how do I write this prompt?" — namely, "what could I even ask?
 
 | Capability | Where |
 |---|---|
-| Public catalog: 80 prompts, 10 categories, 34 subcategories | `src/lib/catalogData.ts` |
-| 9 journeys — ordered paths from a goal to a result | `src/lib/catalogData.ts` |
-| 18 role variants on the resume and cover letter prompts | `src/lib/catalog.ts` |
+| Public catalog: 111 prompts, 13 categories, 45 subcategories | `src/lib/catalogData.ts` |
+| 13 journeys — ordered paths from a goal to a result | `src/lib/catalogData.ts` |
+| 18 role variants (resume, cover letter) and 14 content niches | `src/lib/catalog.ts` |
 | Personal library: categories, `{{variables}}`, ratings, usage | `src/lib/promptStore.ts` |
 | Prompt Studio: guided brief → connected prompt pack | `src/lib/promptGenerator.ts` |
 | Predictive prompts: what you are likely to ask next | `src/lib/predictivePrompts.ts` |
@@ -47,6 +47,7 @@ comes *before* "how do I write this prompt?" — namely, "what could I even ask?
 | Saved conversations, multiple chats | `src/lib/conversationStore.ts` |
 | 28 browser tools over WebMCP | `src/lib/webmcp.ts` |
 | 15 remote tools over MCP, backed by Cloudflare D1 | `server/mcp.ts` |
+| Community forum: sign-in, posts and likes, on Supabase | `src/components/Forum.tsx` |
 | Version history, variants and diffs — **remote only** | `db/schema.ts` |
 
 ## The four jobs
@@ -97,8 +98,10 @@ Honest list, expanded in `agent.md` and `design.md`:
 - **Version history is remote-only.** Editing a prompt in the browser library
   silently overwrites it. The D1 schema already models versions; the local store
   does not.
-- **Local and remote libraries never sync.** They are two disconnected
-  collections joined only by JSON export/import.
+- **Three data stores, no shared identity.** The browser library
+  (`localStorage`), the remote MCP library (Cloudflare D1) and the forum
+  (Supabase) each have their own notion of who you are, and none of them sync.
+  Accounts would collapse this into one.
 - **No accounts.** The remote library is a single shared unauthenticated space,
   which blocks per-user libraries, teams and billing.
 - **`Test · N` does not run anything.** It is a static heuristic score, not a
