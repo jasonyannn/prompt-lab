@@ -40,9 +40,25 @@ export function subscribeToAuthState(callback: (user: SessionUser | null) => voi
   };
 }
 
+/**
+ * Supabase reports "signed out" by returning an AuthSessionMissingError from
+ * getUser(), not by returning a null user. Rethrowing that turns an ordinary
+ * state into a failure and aborts anonymous posting before it starts, so it is
+ * translated back into `null` here. Genuine auth failures still throw.
+ */
+function isMissingSession(error: { name?: string; message?: string }) {
+  return (
+    error.name === "AuthSessionMissingError" ||
+    /session missing|session_not_found/i.test(error.message ?? "")
+  );
+}
+
 export async function getSessionUser(): Promise<SessionUser | null> {
   const { data, error } = await supabase.auth.getUser();
-  if (error) throw error;
+  if (error) {
+    if (isMissingSession(error)) return null;
+    throw error;
+  }
   if (!data.user) return null;
   return { id: data.user.id, email: data.user.email };
 }
