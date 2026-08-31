@@ -17,7 +17,10 @@ import type { PromptBrief, PromptTemplateId } from "./promptGenerator";
 export type PredictedPrompt = {
   /** Stable key: the angle id, plus a pass suffix once the bank wraps. */
   localId: string;
+  /** Full title, used when the prompt is saved to the library. */
   title: string;
+  /** Short angle name, for the card row where the topic is already obvious. */
+  label: string;
   /** Why the user is likely to ask this next. */
   intent: string;
   category: string;
@@ -852,9 +855,11 @@ export function predictPrompts({
       if (seen.has(localId)) continue;
       seen.add(localId);
 
+      const label = `${angle.suffix}${pass > 0 ? ` (deeper ${pass + 1})` : ""}`;
       picked.push({
         localId,
-        title: `${subject} · ${angle.suffix}${pass > 0 ? ` (deeper ${pass + 1})` : ""}`,
+        title: `${subject} · ${label}`,
+        label,
         intent: angle.intent,
         category: angle.category,
         confidence: Math.max(20, confidenceFor(score, best) - pass * 12),
