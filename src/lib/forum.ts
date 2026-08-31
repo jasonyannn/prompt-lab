@@ -7,6 +7,18 @@ export type SessionUser = {
   email?: string | null;
 };
 
+export type UserProfile = {
+  id: string;
+  display_name?: string | null;
+  avatar_url?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export function getPublicProfileName(profile?: { display_name?: string | null } | null) {
+  return profile?.display_name?.trim() || "Anonymous";
+}
+
 function normalizeForumPosts(data: any[] = []): ForumPost[] {
   return data.map((post) => {
     const total = post.forum_post_like_totals?.[0]?.like_count ?? 0;
@@ -188,7 +200,7 @@ export async function getForumPostEngagement(postId: string) {
     likeCount: post?.like_count ?? 0,
     usageCount: post?.usage_count ?? 0,
     likedByUser,
-    author: post?.profiles?.display_name ?? "Anonymous",
+    author: getPublicProfileName(post?.profiles),
     category: post?.category ?? "General",
   };
 }
@@ -224,6 +236,52 @@ export async function getSessionUser(): Promise<SessionUser | null> {
   }
   if (!data.user) return null;
   return { id: data.user.id, email: data.user.email };
+}
+
+export async function getCurrentProfile(): Promise<UserProfile | null> {
+  const user = await getSessionUser();
+  if (!user) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar_url, created_at, updated_at")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (error) {
+    if (error.code === "PGRST116") return null;
+    throw error;
+  }
+
+  if (!data) return null;
+  return data as UserProfile;
+}
+
+export async function updateCurrentProfile(input: {
+  display_name?: string | null;
+}) {
+  const user = await getSessionUser();
+  if (!user) throw new Error("You must be signed in to update your profile.");
+
+  const sanitizedDisplayName = input.display_name?.trim() || null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .upsert(
+      {
+        id: user.id,
+        display_name: sanitizedDisplayName,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "id" }
+    )
+    .select("id, display_name, avatar_url, created_at, updated_at")
+    .single();
+
+  if (error) {
+    throw new Error(error.message || "Supabase blocked the profile update.");
+  }
+  return data as UserProfile;
 }
 
 export async function createForumPost(input: ForumInsert) {

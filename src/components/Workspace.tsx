@@ -14,6 +14,7 @@ import { NewPromptForm } from "./NewPromptForm";
 import { PromptStudio } from "./PromptStudio";
 import { Discover } from "./Discover";
 import { Forum } from "./Forum";
+import { getCurrentProfile, updateCurrentProfile, getPublicProfileName } from "../lib/forum";
 import type { WebMCPState } from "../hooks/useWebMCP";
 import type { RemoteMCPState } from "../hooks/useRemoteMCP";
 
@@ -30,9 +31,13 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   const { agents } = useAgents();
   const { categories: savedCategories } = useCategories();
   const { user, signOut } = useAuth();
-  const [view, setView] = useState<"discover" | "library" | "studio" | "forum">(
+  const [view, setView] = useState<"discover" | "library" | "studio" | "forum" | "account">(
     "discover"
   );
+  const [accountDisplayName, setAccountDisplayName] = useState("");
+  const [accountError, setAccountError] = useState<string | null>(null);
+  const [accountMessage, setAccountMessage] = useState<string | null>(null);
+  const [savingAccount, setSavingAccount] = useState(false);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
   const [agentFilter, setAgentFilter] = useState("All");
@@ -94,6 +99,49 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   }, [prompts, selectedId]);
 
   const selected = prompts.find((prompt) => prompt.id === selectedId) ?? null;
+
+  useEffect(() => {
+    if (!user) {
+      setAccountDisplayName("");
+      setAccountMessage(null);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const profile = await getCurrentProfile();
+        setAccountDisplayName(profile?.display_name ?? "");
+        setAccountError(null);
+      } catch {
+        setAccountDisplayName("");
+      }
+    })();
+  }, [user]);
+
+  async function handleSaveAccountProfile() {
+    if (!user) {
+      setAccountError("Sign in first to change your display name.");
+      return;
+    }
+
+    try {
+      setSavingAccount(true);
+      setAccountError(null);
+      const profile = await updateCurrentProfile({ display_name: accountDisplayName });
+      setAccountDisplayName(profile.display_name ?? "");
+      setAccountMessage(`Display name saved: ${getPublicProfileName(profile)}`);
+    } catch (err) {
+      const message =
+        err && typeof err === "object" && "message" in err && typeof err.message === "string"
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Could not update your display name.";
+      setAccountError(message);
+    } finally {
+      setSavingAccount(false);
+    }
+  }
 
   function exportLibrary() {
     const blob = new Blob([JSON.stringify({
@@ -193,6 +241,12 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
           >
             Forum
           </button>
+          <button
+            className={view === "account" ? "is-active" : ""}
+            onClick={() => setView("account")}
+          >
+            Account
+          </button>
         </nav>
 
         <div className="topbar-spacer" />
@@ -239,6 +293,57 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
         <PromptStudio onOpenPrompt={openInLibrary} />
       ) : view === "forum" ? (
         <Forum />
+      ) : view === "account" ? (
+        <section className="panel forum-panel">
+          <div className="panel-head">
+            <h2>Your Account</h2>
+          </div>
+
+          <div className="panel-body">
+            {!user ? (
+              <p className="empty">
+                You’re not signed in yet. Sign in from the home page to manage your public profile.
+              </p>
+            ) : (
+              <div className="forum-auth-box">
+                <p>
+                  Signed in as <strong>{user.email ?? "your account"}</strong>
+                </p>
+                <p>Choose a public display name that appears on forum posts.</p>
+
+                <div className="forum-actions">
+                  <input
+                    className="input"
+                    placeholder="Display name"
+                    value={accountDisplayName}
+                    onChange={(event) => setAccountDisplayName(event.target.value)}
+                  />
+                  <button
+                    className="btn btn-primary"
+                    onClick={() => void handleSaveAccountProfile()}
+                    disabled={savingAccount}
+                  >
+                    {savingAccount ? "Saving…" : "Save display name"}
+                  </button>
+                </div>
+
+                {accountMessage && (
+                  <p className="notice is-good">
+                    <strong>Profile updated</strong>
+                    <span>{accountMessage}</span>
+                  </p>
+                )}
+
+                {accountError && (
+                  <p className="notice is-bad">
+                    <strong>Profile error</strong>
+                    <span>{accountError}</span>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </section>
       ) : <div className="columns">
         <PromptList
           prompts={visible}

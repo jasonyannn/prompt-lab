@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
 import {
   createForumPost,
+  getCurrentProfile,
   getPublishedPosts,
+  getPublicProfileName,
   getSessionUser,
   toggleLike,
   subscribeToAuthState,
+  updateCurrentProfile,
 } from "../lib/forum";
 import type { ForumPost } from "../types/forum";
 
@@ -19,6 +22,9 @@ export function Forum() {
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [profileDisplayName, setProfileDisplayName] = useState("");
+  const [profileError, setProfileError] = useState<string | null>(null);
+  const [savingProfile, setSavingProfile] = useState(false);
 
   useEffect(() => {
     void loadPosts();
@@ -39,8 +45,41 @@ export function Forum() {
     try {
       const nextUser = await getSessionUser();
       setUser(nextUser);
+
+      if (nextUser) {
+        const profile = await getCurrentProfile();
+        setProfileDisplayName(profile?.display_name ?? "");
+      } else {
+        setProfileDisplayName("");
+      }
     } catch {
       setUser(null);
+      setProfileDisplayName("");
+    }
+  }
+
+  async function handleSaveProfile() {
+    if (!user) {
+      setProfileError("Sign in first to change your display name.");
+      return;
+    }
+
+    try {
+      setSavingProfile(true);
+      setProfileError(null);
+      const profile = await updateCurrentProfile({ display_name: profileDisplayName });
+      setProfileDisplayName(profile.display_name ?? "");
+      setMessage(`Display name updated: ${getPublicProfileName(profile)}`);
+    } catch (err) {
+      const message =
+        err && typeof err === "object" && "message" in err && typeof err.message === "string"
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : "Could not update your profile.";
+      setProfileError(message);
+    } finally {
+      setSavingProfile(false);
     }
   }
 
@@ -152,6 +191,29 @@ export function Forum() {
           )}
         </div>
 
+        {user && (
+          <div className="forum-auth-box">
+            <p>Choose a public display name for forum posts.</p>
+            <div className="forum-actions">
+              <input
+                className="input"
+                placeholder="Display name"
+                value={profileDisplayName}
+                onChange={(event) => setProfileDisplayName(event.target.value)}
+              />
+              <button className="btn btn-primary" onClick={() => void handleSaveProfile()} disabled={savingProfile}>
+                {savingProfile ? "Saving…" : "Save display name"}
+              </button>
+            </div>
+            {profileError && (
+              <p className="notice is-bad">
+                <strong>Profile error</strong>
+                <span>{profileError}</span>
+              </p>
+            )}
+          </div>
+        )}
+
         <div className="forum-compose">
 
           <input
@@ -218,7 +280,7 @@ export function Forum() {
                   </button>
                 </div>
                 <div className="forum-post-meta">
-                  <span>{post.profiles?.display_name ?? "Anonymous"}</span>
+                  <span>{getPublicProfileName(post.profiles)}</span>
                   <div className="forum-post-tools">
                     <button
                       className="like-button"
