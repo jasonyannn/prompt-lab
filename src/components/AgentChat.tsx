@@ -15,6 +15,7 @@ import {
   type UserAttachment,
 } from "../lib/attachments";
 import { AttachmentPicker } from "./AttachmentPicker";
+import { KnowledgeLibrary } from "./KnowledgeLibrary";
 
 const SUGGESTIONS = [
   "I'm building a design AI app. What prompts should I create?",
@@ -34,6 +35,7 @@ export function AgentChat({ agents }: Props) {
   const [model, setModelState] = useState(() => getModel());
   const [agentId, setAgentId] = useState(() => agents[0]?.id ?? "");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const activeAgent = agents.find((agent) => agent.id === agentId);
 
   useEffect(() => {
     void checkOllama().then(setStatus);
@@ -83,7 +85,7 @@ export function AgentChat({ agents }: Props) {
 
     try {
       const added = await chat(next, {
-        agent: agents.find((agent) => agent.id === agentId),
+        agent: activeAgent,
         onAssistant: (message) => setMessages((prev) => [...prev, message]),
         onToolCall: (name, _input, result) =>
           setMessages((prev) => [
@@ -228,6 +230,12 @@ export function AgentChat({ agents }: Props) {
           attachments={attachments}
           onChange={setAttachments}
           disabled={busy}
+        />
+        <KnowledgeLibrary
+          compact
+          agent={activeAgent}
+          attachments={attachments}
+          onAttachmentsChange={setAttachments}
         />
         <div className="chat-input">
           {agents.length > 0 && (

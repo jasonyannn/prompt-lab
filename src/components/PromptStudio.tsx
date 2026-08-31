@@ -7,11 +7,11 @@ import {
   PROMPT_TEMPLATES,
   type GeneratedPrompt,
   type PromptBrief,
-  type PromptTemplateId,
 } from "../lib/promptGenerator";
 import { attachmentContext, type UserAttachment } from "../lib/attachments";
 import { AttachmentPicker } from "./AttachmentPicker";
 import { AgentManager } from "./AgentManager";
+import { KnowledgeLibrary } from "./KnowledgeLibrary";
 
 type Props = {
   onOpenPrompt: (id: string) => void;
@@ -45,6 +45,9 @@ export function PromptStudio({ onOpenPrompt }: Props) {
 
   const selectedAgent =
     agents.find((agent) => agent.id === selectedAgentId) ?? agents[0] ?? null;
+  const imageCount = attachments.filter(
+    (attachment) => attachment.kind === "image"
+  ).length;
 
   const promptCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -55,7 +58,11 @@ export function PromptStudio({ onOpenPrompt }: Props) {
   }, [prompts]);
 
   function generate() {
-    if (!brief.idea.trim() || !selectedAgent) return;
+    if (
+      !brief.idea.trim() ||
+      !selectedAgent ||
+      (brief.templateId === "screenshot" && imageCount === 0)
+    ) return;
     setGenerated(
       generatePromptPack(
         {
@@ -66,6 +73,13 @@ export function PromptStudio({ onOpenPrompt }: Props) {
         selectedAgent
       )
     );
+    setSavedIds({});
+  }
+
+  function selectAgent(id: string) {
+    setSelectedAgentId(id);
+    setAttachments([]);
+    setGenerated([]);
     setSavedIds({});
   }
 
@@ -110,7 +124,10 @@ export function PromptStudio({ onOpenPrompt }: Props) {
     setSavedIds(next);
   }
 
-  const canGenerate = brief.idea.trim() !== "" && selectedAgent !== null;
+  const canGenerate =
+    brief.idea.trim() !== "" &&
+    selectedAgent !== null &&
+    (brief.templateId !== "screenshot" || imageCount > 0);
   const allSaved = generated.length > 0 && generated.every((item) => savedIds[item.localId]);
   const hasInvalidPrompt = generated.some(
     (item) => !item.title.trim() || !item.content.trim()
@@ -122,7 +139,7 @@ export function PromptStudio({ onOpenPrompt }: Props) {
         agents={agents}
         selectedId={selectedAgent?.id ?? null}
         promptCounts={promptCounts}
-        onSelect={setSelectedAgentId}
+        onSelect={selectAgent}
       />
 
       <main className="studio-main">
@@ -160,7 +177,7 @@ export function PromptStudio({ onOpenPrompt }: Props) {
                   className={`template-card${brief.templateId === template.id ? " is-active" : ""}`}
                   aria-pressed={brief.templateId === template.id}
                   onClick={() =>
-                    setBrief({ ...brief, templateId: template.id as PromptTemplateId })
+                    setBrief({ ...brief, templateId: template.id })
                   }
                 >
                   <small>{template.eyebrow}</small>
@@ -177,7 +194,11 @@ export function PromptStudio({ onOpenPrompt }: Props) {
             <span className="step-number">2</span>
             <h2>Give it a useful brief</h2>
             <div className="topbar-spacer" />
-            <span className="hint no-margin">Only the idea is required</span>
+            <span className="hint no-margin">
+              {brief.templateId === "screenshot"
+                ? "An idea and screenshot are required"
+                : "Only the idea is required"}
+            </span>
           </div>
           <div className="panel-body">
             <div className="field">
@@ -252,11 +273,21 @@ export function PromptStudio({ onOpenPrompt }: Props) {
                 attachments={attachments}
                 onChange={setAttachments}
               />
+              {brief.templateId === "screenshot" && imageCount === 0 && (
+                <p className="screenshot-needed" role="status">
+                  Attach a screenshot to generate the visual workflow.
+                </p>
+              )}
               <p className="hint">
                 Document text is embedded into generated prompts. A WebMCP agent can
                 inspect both documents and images; Local Agent image analysis requires
                 a vision-capable model.
               </p>
+              <KnowledgeLibrary
+                agent={selectedAgent ?? undefined}
+                attachments={attachments}
+                onAttachmentsChange={setAttachments}
+              />
             </div>
 
             <div className="generate-row">
