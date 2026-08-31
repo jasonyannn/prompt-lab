@@ -1222,6 +1222,11 @@ select {
   background: rgba(255, 107, 107, 0.1);
 }
 
+.knowledge-remove.is-confirm {
+  color: var(--bad);
+  background: rgba(255, 107, 107, 0.13);
+}
+
 .knowledge-library.is-compact {
   margin: 7px 14px 0;
   padding: 8px;
