@@ -21,6 +21,7 @@ export const DEFAULT_CATEGORIES = [
   "Hobbies",
   "Marketing",
   "Personal",
+  "Presentations",
   "Productivity",
   "Relationships",
   "Security",
@@ -39,7 +40,7 @@ const UPDATED_EVENT = "promptlab:categories-updated";
  * categories are always preserved; a default someone deleted does come back
  * once, which is the price of keeping the merge this simple.
  */
-const SEED_VERSION = 3;
+const SEED_VERSION = 4;
 
 type StoredCategories = { version: number; categories: string[] };
 
