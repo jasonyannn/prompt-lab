@@ -709,11 +709,17 @@
 
 /* Sign in ----------------------------------------------------------------- */
 
+.signin-section {
+  padding-top: 0;
+}
+
+/* Anchor jumps land below the sticky nav rather than under it. */
 .signin-card {
   display: grid;
   gap: 10px;
   max-width: 560px;
-  margin: 0 auto 26px;
+  margin: 0 auto;
+  scroll-margin-top: 90px;
   padding: 22px;
   border: 1px solid var(--line, #242a38);
   border-radius: 14px;
