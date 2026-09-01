@@ -29,7 +29,7 @@ export function WebMCPStatus({
     return (
       <span
         className="status is-ready"
-        title={`${remoteToolCount} tools available through the remote /mcp endpoint`}
+        title={`${remoteToolCount} tools available through the remote /mcp/ endpoint`}
       >
         <span className="dot" />
         Remote MCP Ready · {remoteToolCount} tools

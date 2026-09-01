@@ -117,7 +117,9 @@ async function handleApi(request: Request, env: Env, pathname: string) {
     return json({
       ready: true,
       name: "Prompt Lab",
-      endpoint: `${origin}/mcp`,
+      // Trailing slash is required: the Sites edge answers a bare /mcp with its
+      // own 404 before the request reaches this worker, so only /mcp/ connects.
+      endpoint: `${origin}/mcp/`,
       transport: "Streamable HTTP",
       protocolVersions: ["2026-07-28", "2025-11-25"],
       persistence: "Cloudflare D1",

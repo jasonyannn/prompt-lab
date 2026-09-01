@@ -7,7 +7,7 @@ A prompt library that exposes its real functionality to AI agents through two
 standards-based surfaces:
 
 - **Browser WebMCP** through the native `document.modelContext` API.
-- **Remote MCP** through a public Streamable HTTP endpoint at `/mcp`.
+- **Remote MCP** through a public Streamable HTTP endpoint at `/mcp/`.
 
 Everything a human can do in this UI, an agent can do through a registered tool,
 and browser-native, remote and local-agent calls appear in the Activity feed.
@@ -17,7 +17,7 @@ and browser-native, remote and local-agent calls appear in the Activity feed.
 Use the deployed app's MCP URL:
 
 ```text
-https://<your-prompt-lab-site>/mcp
+https://<your-prompt-lab-site>/mcp/
 ```
 
 The endpoint implements the current stateless MCP `2026-07-28` protocol and a

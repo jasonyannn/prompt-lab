@@ -79,7 +79,7 @@ export function AgentActivity({ activity, tools, onClear }: Props) {
           ))}
         </div>
         <p className="hint">
-          Exposed in-page and through the remote <code>/mcp</code> endpoint.
+          Exposed in-page and through the remote <code>/mcp/</code> endpoint.
         </p>
       </div>
     </>

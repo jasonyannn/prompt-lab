@@ -47,8 +47,11 @@ const APP_BASE = import.meta.env.BASE_URL.endsWith("/")
   : `${import.meta.env.BASE_URL}/`;
 
 export function useRemoteMCP(): RemoteMCPState {
+  // This is the URL users copy to connect an agent, so it keeps the trailing
+  // slash: the Sites edge answers a bare /mcp with its own 404 before the
+  // request reaches the worker, and only /mcp/ reaches the MCP handler.
   const endpoint = useMemo(
-    () => new URL(`${APP_BASE}mcp`, window.location.origin).href,
+    () => new URL(`${APP_BASE}mcp/`, window.location.origin).href,
     []
   );
   const [state, setState] = useState<Omit<RemoteMCPState, "endpoint">>({
