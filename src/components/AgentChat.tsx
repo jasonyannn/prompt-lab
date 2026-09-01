@@ -210,12 +210,8 @@ export function AgentChat({ agents }: Props) {
       });
       saved[`${messageIndex}:${candidate.id}`] = prompt.id;
     }
+    // Each saved row switches to a ✓ in place, which is the feedback.
     setSavedFromReply((current) => ({ ...current, ...saved }));
-    setMessage(
-      candidates.length === 1
-        ? `Saved "${candidates[0].title}" to ${category}.`
-        : `Saved ${candidates.length} prompts to ${category}.`
-    );
   }
 
   function toggleProposal(id: string) {
