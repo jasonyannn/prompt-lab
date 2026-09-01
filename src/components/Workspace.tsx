@@ -3,6 +3,8 @@ import { usePrompts } from "../hooks/usePrompts";
 import { useAgents } from "../hooks/useAgents";
 import { useCategories } from "../hooks/useCategories";
 import { useAuth } from "../hooks/useAuth";
+import { useSettings } from "../hooks/useSettings";
+import { Settings } from "./Settings";
 import { promptStore } from "../lib/promptStore";
 import { agentStore } from "../lib/agentStore";
 import { categoryStore } from "../lib/categoryStore";
@@ -31,7 +33,8 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   const { agents } = useAgents();
   const { categories: savedCategories } = useCategories();
   const { user, signOut } = useAuth();
-  const [view, setView] = useState<"discover" | "library" | "studio" | "forum" | "account">(
+  const { t } = useSettings();
+  const [view, setView] = useState<"discover" | "library" | "studio" | "forum" | "account" | "settings">(
     "discover"
   );
   const [accountDisplayName, setAccountDisplayName] = useState("");
@@ -209,6 +212,9 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#main-content">
+        {t("nav.skipToContent")}
+      </a>
       <header className="topbar">
         <button className="brand brand-button" onClick={onHome}>
           <span className="mark" aria-hidden="true" />
@@ -221,31 +227,37 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
             className={view === "discover" ? "is-active" : ""}
             onClick={() => setView("discover")}
           >
-            Discover
+            {t("nav.discover")}
           </button>
           <button
             className={view === "library" ? "is-active" : ""}
             onClick={() => setView("library")}
           >
-            Library
+            {t("nav.library")}
           </button>
           <button
             className={view === "studio" ? "is-active" : ""}
             onClick={() => setView("studio")}
           >
-            Prompt Studio
+            {t("nav.studio")}
           </button>
           <button
             className={view === "forum" ? "is-active" : ""}
             onClick={() => setView("forum")}
           >
-            Forum
+            {t("nav.forum")}
           </button>
           <button
             className={view === "account" ? "is-active" : ""}
             onClick={() => setView("account")}
           >
             Account
+          </button>
+          <button
+            className={view === "settings" ? "is-active" : ""}
+            onClick={() => setView("settings")}
+          >
+            {t("nav.settings")}
           </button>
         </nav>
 
@@ -287,7 +299,13 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
         />
       </header>
 
-      {view === "discover" ? (
+      <main id="main-content" tabIndex={-1}>
+      {view === "settings" ? (
+        <Settings
+          onExport={exportLibrary}
+          onImport={() => fileRef.current?.click()}
+        />
+      ) : view === "discover" ? (
         <Discover onOpenPrompt={openInLibrary} />
       ) : view === "studio" ? (
         <PromptStudio onOpenPrompt={openInLibrary} />
@@ -400,6 +418,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
           agents={agents}
         />
       </div>}
+      </main>
     </div>
   );
 }

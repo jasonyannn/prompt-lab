@@ -202,8 +202,18 @@ export function Forum() {
 
   return (
     <section className="panel forum-panel">
+      {!viewing && (
+        <div className="forum-hero">
+          <span className="eyebrow studio-eyebrow">Community</span>
+          <h2>
+            Prompts worth stealing.<br />
+            <em>Published by people who use them.</em>
+          </h2>
+        </div>
+      )}
+
       <div className="panel-head">
-        <h2>Forum</h2>
+        <h2>{viewing ? "Profile" : "Forum"}</h2>
         <div className="topbar-spacer" />
         {user && !viewing && (
           <button className="btn btn-ghost" onClick={() => void openProfile(user.id, true)}>
