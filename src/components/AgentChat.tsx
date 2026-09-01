@@ -22,10 +22,7 @@ import { useCategories } from "../hooks/useCategories";
 import { promptStore } from "../lib/promptStore";
 import { categoryStore } from "../lib/categoryStore";
 import { conversationStore, type Conversation } from "../lib/conversationStore";
-import {
-  extractPromptCandidates,
-  extractPromptOffers,
-} from "../lib/promptExtraction";
+import { segmentReply } from "../lib/promptExtraction";
 import { usePrompts } from "../hooks/usePrompts";
 
 const SUGGESTIONS = [
@@ -478,174 +475,153 @@ export function AgentChat({ agents }: Props) {
 
           if (!message.content) return null;
 
-          const candidates =
+          const segments =
             message.role === "assistant"
-              ? extractPromptCandidates(message.content)
+              ? segmentReply(message.display_content ?? message.content)
               : [];
-          const unsavedCandidates = candidates.filter(
+          const inlinePrompts = segments.flatMap((segment) =>
+            segment.kind === "prompt" ? [segment.candidate] : []
+          );
+          const inlineOffers = segments.flatMap((segment) =>
+            segment.kind === "offer" ? [segment.offer] : []
+          );
+          const unsavedInline = inlinePrompts.filter(
             (candidate) => !savedFromReply[`${index}:${candidate.id}`]
           );
-          const tickedCandidates = unsavedCandidates.filter(
+          const tickedInline = unsavedInline.filter(
             (candidate) => pickedFromReply[`${index}:${candidate.id}`]
+          );
+          const tickedOffers = inlineOffers.filter(
+            (offer) => pickedOffers[`${index}:${offer.id}`]
           );
 
           return (
             <div className={`bubble bubble-${message.role}`} key={index}>
-              <span>{message.display_content ?? message.content}</span>
+              {segments.length === 0 ? (
+                <span>{message.display_content ?? message.content}</span>
+              ) : (
+                <div className="reply-body">
+                  {segments.map((segment) => {
+                    if (segment.kind === "text") {
+                      return <span key={segment.key}>{segment.text}</span>;
+                    }
 
-              {candidates.length === 0 &&
-                message.role === "assistant" &&
-                (() => {
-                  const offers = extractPromptOffers(message.content);
-                  if (offers.length === 0) return null;
-                  const ticked = offers.filter(
-                    (offer) => pickedOffers[`${index}:${offer.id}`]
-                  );
-
-                  return (
-                    <div className="reply-picker">
-                      <div className="reply-picker-head">
-                        <strong>Pick what you want built</strong>
-                        <span>
-                          Tick these instead of typing a reply — the agent writes
-                          the ones you choose.
-                        </span>
-                      </div>
-
-                      <ul className="reply-picker-list">
-                        {offers.map((offer) => {
-                          const key = `${index}:${offer.id}`;
-                          return (
-                            <li key={offer.id}>
-                              <label>
-                                <input
-                                  type="checkbox"
-                                  checked={Boolean(pickedOffers[key])}
-                                  onChange={(event) =>
-                                    setPickedOffers((current) => ({
-                                      ...current,
-                                      [key]: event.target.checked,
-                                    }))
-                                  }
-                                />
-                                <span className="reply-picker-copy">
-                                  <strong>{offer.title}</strong>
-                                  <small>{offer.summary}</small>
-                                </span>
-                              </label>
-                            </li>
-                          );
-                        })}
-                      </ul>
-
-                      <div className="reply-picker-actions">
-                        <button
-                          className="btn btn-primary"
-                          disabled={ticked.length === 0 || busy}
-                          onClick={() =>
-                            createFromOffers(ticked.map((offer) => offer.title))
-                          }
-                        >
-                          Create selected ({ticked.length})
-                        </button>
-                        <button
-                          className="btn"
-                          disabled={busy}
-                          onClick={() =>
-                            createFromOffers(offers.map((offer) => offer.title))
-                          }
-                        >
-                          Create all {offers.length}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })()}
-
-              {candidates.length > 0 && (
-                <div className="reply-picker">
-                  <div className="reply-picker-head">
-                    <strong>
-                      {candidates.length} prompt
-                      {candidates.length === 1 ? "" : "s"} in this reply
-                    </strong>
-                    <span>Tick the ones you want to keep.</span>
-                  </div>
-
-                  <ul className="reply-picker-list">
-                    {candidates.map((candidate) => {
-                      const key = `${index}:${candidate.id}`;
-                      const savedId = savedFromReply[key];
+                    if (segment.kind === "offer") {
+                      const key = `${index}:${segment.offer.id}`;
                       return (
-                        <li key={candidate.id}>
-                          {savedId ? (
-                            <span className="reply-picker-saved">
-                              <span aria-hidden="true">✓</span>
-                              <span className="reply-picker-copy">
-                                <strong>{candidate.title}</strong>
-                                <small>Saved to your library</small>
-                              </span>
-                            </span>
-                          ) : (
-                            <label>
-                              <input
-                                type="checkbox"
-                                checked={Boolean(pickedFromReply[key])}
-                                onChange={(event) =>
-                                  setPickedFromReply((current) => ({
-                                    ...current,
-                                    [key]: event.target.checked,
-                                  }))
-                                }
-                              />
-                              <span className="reply-picker-copy">
-                                <strong>{candidate.title}</strong>
-                                <small>
-                                  {candidate.content.slice(0, 80).replace(/\n/g, " ")}…
-                                </small>
-                              </span>
-                            </label>
-                          )}
-                        </li>
+                        <label className="inline-pick" key={segment.key}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(pickedOffers[key])}
+                            onChange={(event) =>
+                              setPickedOffers((current) => ({
+                                ...current,
+                                [key]: event.target.checked,
+                              }))
+                            }
+                          />
+                          <span className="inline-pick-copy">
+                            <strong>{segment.offer.title}</strong>
+                            <small>{segment.offer.summary}</small>
+                          </span>
+                        </label>
                       );
-                    })}
-                  </ul>
+                    }
 
-                  {unsavedCandidates.length > 0 && (
-                    <div className="reply-picker-actions">
-                      <label className="save-into">
-                        <span>Save into</span>
-                        <select
-                          className="select"
-                          value={
-                            saveCategory ?? activeAgent?.defaultCategory ?? "General"
-                          }
-                          onChange={(event) => setSaveCategory(event.target.value)}
-                        >
-                          {categories.map((name) => (
-                            <option key={name} value={name}>
-                              {name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <button
-                        className="btn btn-primary"
-                        disabled={tickedCandidates.length === 0}
-                        onClick={() => saveFromReply(index, tickedCandidates)}
+                    const key = `${index}:${segment.candidate.id}`;
+                    const savedId = savedFromReply[key];
+                    return (
+                      <div
+                        className={`inline-prompt${savedId ? " is-saved" : ""}`}
+                        key={segment.key}
                       >
-                        Save ticked ({tickedCandidates.length})
-                      </button>
-                      <button
-                        className="btn"
-                        onClick={() => saveFromReply(index, unsavedCandidates)}
-                      >
-                        Save all {unsavedCandidates.length}
-                      </button>
-                    </div>
-                  )}
+                        {savedId ? (
+                          <span className="inline-pick is-saved">
+                            <span aria-hidden="true">✓</span>
+                            <span className="inline-pick-copy">
+                              <strong>{segment.candidate.title}</strong>
+                              <small>Saved to your library</small>
+                            </span>
+                          </span>
+                        ) : (
+                          <label className="inline-pick">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(pickedFromReply[key])}
+                              onChange={(event) =>
+                                setPickedFromReply((current) => ({
+                                  ...current,
+                                  [key]: event.target.checked,
+                                }))
+                              }
+                            />
+                            <span className="inline-pick-copy">
+                              <strong>{segment.candidate.title}</strong>
+                            </span>
+                          </label>
+                        )}
+                        <pre className="inline-prompt-body">{segment.body}</pre>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
+
+              {unsavedInline.length > 0 && (
+                <div className="inline-actions">
+                  <label className="save-into">
+                    <span>Save into</span>
+                    <select
+                      className="select"
+                      value={saveCategory ?? activeAgent?.defaultCategory ?? "General"}
+                      onChange={(event) => setSaveCategory(event.target.value)}
+                    >
+                      {categories.map((name) => (
+                        <option key={name} value={name}>
+                          {name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="btn btn-primary"
+                    disabled={tickedInline.length === 0}
+                    onClick={() => saveFromReply(index, tickedInline)}
+                  >
+                    Save ticked ({tickedInline.length})
+                  </button>
+                  <button
+                    className="btn"
+                    onClick={() => saveFromReply(index, unsavedInline)}
+                  >
+                    Save all {unsavedInline.length}
+                  </button>
+                </div>
+              )}
+
+              {inlineOffers.length > 0 && (
+                <div className="inline-actions">
+                  <button
+                    className="btn btn-primary"
+                    disabled={tickedOffers.length === 0 || busy}
+                    onClick={() =>
+                      createFromOffers(tickedOffers.map((offer) => offer.title))
+                    }
+                  >
+                    Create selected ({tickedOffers.length})
+                  </button>
+                  <button
+                    className="btn"
+                    disabled={busy}
+                    onClick={() =>
+                      createFromOffers(inlineOffers.map((offer) => offer.title))
+                    }
+                  >
+                    Create all {inlineOffers.length}
+                  </button>
+                </div>
+              )}
+
               {(message.attachments?.length ?? 0) > 0 && (
                 <ul className="message-attachments" aria-label="Message attachments">
                   {message.attachments?.map((attachment) => (

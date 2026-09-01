@@ -3,6 +3,7 @@ import {
   extractPromptCandidates,
   extractPromptOffers,
   replyOffersPrompts,
+  segmentReply,
 } from "./promptExtraction";
 
 /** The shape gpt-5.2 actually returns when it lists prompts instead of calling the tool. */
@@ -198,5 +199,42 @@ describe("extractPromptOffers", () => {
 
   it("does not fire on a reply that already contains full prompts", () => {
     expect(extractPromptCandidates(OFFER_REPLY)).toHaveLength(0);
+  });
+});
+
+describe("segmentReply", () => {
+  it("returns one text segment when there is nothing interactive", () => {
+    const segments = segmentReply("I saved that for you.");
+    expect(segments).toHaveLength(1);
+    expect(segments[0].kind).toBe("text");
+  });
+
+  it("places a prompt segment where the prompt appeared", () => {
+    const segments = segmentReply(NUMBERED_REPLY);
+    const kinds = segments.map((s) => s.kind);
+    expect(kinds[0]).toBe("text");
+    expect(kinds.filter((k) => k === "prompt")).toHaveLength(3);
+  });
+
+  it("does not duplicate the prompt body into a text segment", () => {
+    const segments = segmentReply(NUMBERED_REPLY);
+    const text = segments
+      .filter((s) => s.kind === "text")
+      .map((s) => (s as { text: string }).text)
+      .join(" ");
+    expect(text).not.toContain("Act as a senior accessibility specialist");
+  });
+
+  it("places offer segments inline where the bullets were", () => {
+    const segments = segmentReply(OFFER_REPLY);
+    expect(segments.filter((s) => s.kind === "offer")).toHaveLength(3);
+    // The intro and the trailing "Reply with:" line stay as text around them.
+    expect(segments[0].kind).toBe("text");
+    expect(segments.at(-1)?.kind).toBe("text");
+  });
+
+  it("never mixes prompts and offers in one reply", () => {
+    const segments = segmentReply(NUMBERED_REPLY);
+    expect(segments.some((s) => s.kind === "offer")).toBe(false);
   });
 });
