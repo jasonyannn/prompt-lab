@@ -12,9 +12,14 @@ export function attachPromptsToAssistantMessage(
 ): ChatMessage[] {
   if (prompts.length === 0) return messages;
 
-  const target = messages.findLastIndex(
-    (message) => message.role === "assistant" && Boolean(message.content.trim())
-  );
+  let target = -1;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message.role === "assistant" && message.content.trim()) {
+      target = index;
+      break;
+    }
+  }
 
   if (target === -1) {
     return [
