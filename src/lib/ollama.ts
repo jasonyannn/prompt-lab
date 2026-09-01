@@ -46,6 +46,17 @@ export type ToolCall = {
   function: { name: string; arguments: Record<string, unknown> };
 };
 
+/** A generated prompt rendered and managed inside one assistant message. */
+export type ChatPrompt = {
+  id: string;
+  title: string;
+  prompt: string;
+  category: string;
+  selected: boolean;
+  /** The persisted library id, once this proposal has been saved. */
+  savedPromptId?: string;
+};
+
 export type ChatMessage = {
   role: ChatRole;
   content: string;
@@ -62,6 +73,8 @@ export type ChatMessage = {
     dataUrl?: string;
     truncated?: boolean;
   }[];
+  /** Structured prompt proposals owned by this specific assistant response. */
+  prompts?: ChatPrompt[];
   tool_calls?: ToolCall[];
   tool_name?: string;
 };

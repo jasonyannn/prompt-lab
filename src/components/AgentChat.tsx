@@ -6,6 +6,7 @@ import {
   getModel,
   setModel,
   type ChatMessage,
+  type ChatPrompt,
   type OllamaStatus,
 } from "../lib/ollama";
 import type { PromptAgent } from "../lib/agentStore";
@@ -24,6 +25,11 @@ import { categoryStore } from "../lib/categoryStore";
 import { conversationStore, type Conversation } from "../lib/conversationStore";
 import { segmentReply } from "../lib/promptExtraction";
 import { usePrompts } from "../hooks/usePrompts";
+import {
+  assistantTextForStructuredPrompts,
+  attachPromptsToAssistantMessage,
+} from "../lib/chatPrompts";
+import { InlinePromptSelector } from "./InlinePromptSelector";
 
 const SUGGESTIONS = [
   "I'm building a design AI app. What prompts should I create?",
@@ -50,24 +56,13 @@ function listsPrompts(text: string) {
   return items >= 2 && items > questions;
 }
 
-/** A prompt the agent wants to create, held back until the user approves it. */
-type Proposal = {
-  id: string;
-  title: string;
-  content: string;
-  category: string;
-  selected: boolean;
-};
-
 export function AgentChat({ agents }: Props) {
   const hosted = useModel();
   const { categories } = useCategories();
   const { prompts: libraryPrompts } = usePrompts();
   const [provider, setProvider] = useState<Provider>("hosted");
-  const [proposals, setProposals] = useState<Proposal[]>([]);
   const [saveCategory, setSaveCategory] = useState<string | null>(null);
-  const [newCategory, setNewCategory] = useState("");
-  const [addingCategory, setAddingCategory] = useState(false);
+  const [savingMessage, setSavingMessage] = useState<number | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>(() =>
     conversationStore.getAll()
   );
@@ -155,6 +150,7 @@ export function AgentChat({ agents }: Props) {
     setAttachments([]);
     setMessages(next);
     setBusy(true);
+    const turnPrompts: ChatPrompt[] = [];
 
     try {
       const run = provider === "hosted" ? chatWithHostedModel : chatWithOllama;
@@ -170,10 +166,13 @@ export function AgentChat({ agents }: Props) {
               ? args.category
               : activeAgent?.defaultCategory ?? "General";
 
-          setProposals((current) => [
-            ...current,
-            { id: crypto.randomUUID(), title, content, category, selected: true },
-          ]);
+          turnPrompts.push({
+            id: crypto.randomUUID(),
+            title,
+            prompt: content,
+            category,
+            selected: true,
+          });
           return `Proposed "${title}" to the user. It is NOT saved yet — the user picks which prompts to keep and which category they go in. Do not call create_prompt again for this prompt.`;
         },
         agent: activeAgent,
@@ -185,7 +184,10 @@ export function AgentChat({ agents }: Props) {
           ]),
       });
       // chat() reports incrementally; keep only the authoritative final list.
-      setMessages([...next, ...added]);
+      setMessages([
+        ...next,
+        ...attachPromptsToAssistantMessage(added, turnPrompts),
+      ]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -232,29 +234,73 @@ export function AgentChat({ agents }: Props) {
     );
   }
 
-  function toggleProposal(id: string) {
-    setProposals((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, selected: !item.selected } : item
+  function toggleGeneratedPrompt(
+    messageIndex: number,
+    promptId: string,
+    selected: boolean
+  ) {
+    setMessages((current) =>
+      current.map((message, index) =>
+        index !== messageIndex
+          ? message
+          : {
+              ...message,
+              prompts: message.prompts?.map((prompt) =>
+                prompt.id === promptId ? { ...prompt, selected } : prompt
+              ),
+            }
       )
     );
   }
 
-  function saveProposals(which: Proposal[]) {
-    if (which.length === 0) return;
+  async function saveGeneratedPrompts(
+    messageIndex: number,
+    which: ChatPrompt[]
+  ) {
+    const unsaved = which.filter((prompt) => !prompt.savedPromptId);
+    if (unsaved.length === 0 || savingMessage !== null) return;
+
+    setSavingMessage(messageIndex);
+    // Let React paint the disabled/loading state before synchronous local
+    // persistence and its update events run.
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
     const category = saveCategory ?? activeAgent?.defaultCategory ?? "General";
-    categoryStore.ensure(category);
-    // Reversed so the first proposal ends up on top of a recency-sorted library.
-    for (const item of [...which].reverse()) {
-      promptStore.create({
-        title: item.title,
-        content: item.content,
-        category,
-        agentId: activeAgent?.id,
-      });
+    try {
+      categoryStore.ensure(category);
+      const savedIds = new Map<string, string>();
+
+      // Reversed so the first proposal ends up on top of a recency-sorted library.
+      for (const item of [...unsaved].reverse()) {
+        const saved = promptStore.create({
+          title: item.title,
+          content: item.prompt,
+          category,
+          agentId: activeAgent?.id,
+        });
+        savedIds.set(item.id, saved.id);
+      }
+
+      setMessages((current) =>
+        current.map((message, index) =>
+          index !== messageIndex
+            ? message
+            : {
+                ...message,
+                prompts: message.prompts?.map((prompt) => {
+                  const savedPromptId = savedIds.get(prompt.id);
+                  return savedPromptId
+                    ? { ...prompt, savedPromptId, selected: false }
+                    : prompt;
+                }),
+              }
+        )
+      );
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : String(caught));
+    } finally {
+      setSavingMessage(null);
     }
-    const savedIds = new Set(which.map((item) => item.id));
-    setProposals((current) => current.filter((item) => !savedIds.has(item.id)));
   }
 
   const visibleLibraryPrompts = (() => {
@@ -279,8 +325,10 @@ export function AgentChat({ agents }: Props) {
   function newChat() {
     setConversationId(crypto.randomUUID());
     setMessages([]);
-    setProposals([]);
     setAttachments([]);
+    setPickedFromReply({});
+    setSavedFromReply({});
+    setPickedOffers({});
     setError(null);
     setShowHistory(false);
   }
@@ -288,8 +336,10 @@ export function AgentChat({ agents }: Props) {
   function openConversation(conversation: Conversation) {
     setConversationId(conversation.id);
     setMessages(conversation.messages);
-    setProposals([]);
     setAttachments([]);
+    setPickedFromReply({});
+    setSavedFromReply({});
+    setPickedOffers({});
     setError(null);
     setShowHistory(false);
     if (conversation.agentId) setAgentId(conversation.agentId);
@@ -310,6 +360,7 @@ export function AgentChat({ agents }: Props) {
   const lastReply = messages[messages.length - 1];
   const lastReplyHasText =
     lastReply?.role === "assistant" && listsPrompts(lastReply.content ?? "");
+  const lastReplyHasStructuredPrompts = Boolean(lastReply?.prompts?.length);
 
   if (hosted.checking && status.state === "checking") {
     return (
@@ -473,11 +524,21 @@ export function AgentChat({ agents }: Props) {
             );
           }
 
-          if (!message.content) return null;
+          if (!message.content && !message.prompts?.length) return null;
+
+          const structuredPrompts =
+            message.role === "assistant" ? message.prompts ?? [] : [];
+          const visibleContent =
+            structuredPrompts.length > 0
+              ? assistantTextForStructuredPrompts(
+                  message.display_content ?? message.content,
+                  structuredPrompts
+                )
+              : message.display_content ?? message.content;
 
           const segments =
             message.role === "assistant"
-              ? segmentReply(message.display_content ?? message.content)
+              ? segmentReply(visibleContent)
               : [];
           const inlinePrompts = segments.flatMap((segment) =>
             segment.kind === "prompt" ? [segment.candidate] : []
@@ -496,9 +557,14 @@ export function AgentChat({ agents }: Props) {
           );
 
           return (
-            <div className={`bubble bubble-${message.role}`} key={index}>
+            <div
+              className={`bubble bubble-${message.role}${
+                structuredPrompts.length > 0 ? " has-inline-prompts" : ""
+              }`}
+              key={index}
+            >
               {segments.length === 0 ? (
-                <span>{message.display_content ?? message.content}</span>
+                <span>{visibleContent}</span>
               ) : (
                 <div className="reply-body">
                   {segments.map((segment) => {
@@ -567,6 +633,36 @@ export function AgentChat({ agents }: Props) {
                 </div>
               )}
 
+              {structuredPrompts.length > 0 && (
+                <InlinePromptSelector
+                  prompts={structuredPrompts}
+                  categories={categories}
+                  category={
+                    saveCategory ?? activeAgent?.defaultCategory ?? "General"
+                  }
+                  saving={savingMessage === index}
+                  onCategoryChange={setSaveCategory}
+                  onCreateCategory={(name) => categoryStore.create(name)}
+                  onToggle={(promptId, selected) =>
+                    toggleGeneratedPrompt(index, promptId, selected)
+                  }
+                  onSaveSelected={() =>
+                    void saveGeneratedPrompts(
+                      index,
+                      structuredPrompts.filter(
+                        (prompt) => prompt.selected && !prompt.savedPromptId
+                      )
+                    )
+                  }
+                  onSaveAll={() =>
+                    void saveGeneratedPrompts(
+                      index,
+                      structuredPrompts.filter((prompt) => !prompt.savedPromptId)
+                    )
+                  }
+                />
+              )}
+
               {unsavedInline.length > 0 && (
                 <div className="inline-actions">
                   <label className="save-into">
@@ -588,7 +684,7 @@ export function AgentChat({ agents }: Props) {
                     disabled={tickedInline.length === 0}
                     onClick={() => saveFromReply(index, tickedInline)}
                   >
-                    Save ticked ({tickedInline.length})
+                    Save selected ({tickedInline.length})
                   </button>
                   <button
                     className="btn"
@@ -647,7 +743,7 @@ export function AgentChat({ agents }: Props) {
         {error && <div className="notice is-bad">{error}</div>}
       </div>
 
-      {proposals.length === 0 && !busy && lastReplyHasText && (
+      {!busy && !lastReplyHasStructuredPrompts && lastReplyHasText && (
         <div className="rescue-row">
           <span>Listed prompts in the reply instead of offering them?</span>
           <button
@@ -661,131 +757,6 @@ export function AgentChat({ agents }: Props) {
           >
             Save those as prompts →
           </button>
-        </div>
-      )}
-
-      {proposals.length > 0 && (
-        <div className="proposal-tray">
-          <div className="proposal-head">
-            <strong>
-              {proposals.length} prompt{proposals.length === 1 ? "" : "s"} ready to save
-            </strong>
-            <span>
-              Save one from its row, or tick several and choose a category.
-            </span>
-          </div>
-
-          {proposals.length > 1 && (
-            <button
-              className="proposal-select-all"
-              onClick={() => {
-                const selectAll = proposals.some((item) => !item.selected);
-                setProposals((current) =>
-                  current.map((item) => ({ ...item, selected: selectAll }))
-                );
-              }}
-            >
-              {proposals.some((item) => !item.selected)
-                ? "Select all"
-                : "Clear selection"}
-            </button>
-          )}
-
-          <ul className="proposal-list">
-            {proposals.map((item) => (
-              <li key={item.id}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={item.selected}
-                    onChange={() => toggleProposal(item.id)}
-                  />
-                  <span className="proposal-copy">
-                    <strong title={item.title}>{item.title}</strong>
-                    <small>{item.content.slice(0, 90)}…</small>
-                  </span>
-                </label>
-                <button
-                  className="btn btn-ghost proposal-save-one"
-                  title={`Save only "${item.title}"`}
-                  onClick={() => saveProposals([item])}
-                >
-                  Save
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          <div className="proposal-category">
-            <label className="save-into">
-              <span>Save into</span>
-              <select
-                className="select"
-                value={saveCategory ?? activeAgent?.defaultCategory ?? "General"}
-                onChange={(event) => setSaveCategory(event.target.value)}
-              >
-                {!categories.includes(
-                  saveCategory ?? activeAgent?.defaultCategory ?? "General"
-                ) && (
-                  <option>
-                    {saveCategory ?? activeAgent?.defaultCategory ?? "General"}
-                  </option>
-                )}
-                {categories.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            {addingCategory ? (
-              <form
-                className="predict-category-form"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const created = categoryStore.create(newCategory);
-                  if (created) setSaveCategory(created);
-                  setNewCategory("");
-                  setAddingCategory(false);
-                }}
-              >
-                <input
-                  className="input"
-                  aria-label="New category name"
-                  placeholder="e.g. Dating"
-                  value={newCategory}
-                  onChange={(event) => setNewCategory(event.target.value)}
-                />
-                <button className="btn" type="submit" disabled={!newCategory.trim()}>
-                  Add
-                </button>
-              </form>
-            ) : (
-              <button
-                className="btn btn-ghost predict-add-category"
-                onClick={() => setAddingCategory(true)}
-              >
-                + New category
-              </button>
-            )}
-          </div>
-
-          <div className="proposal-actions">
-            <button
-              className="btn btn-primary"
-              disabled={proposals.every((item) => !item.selected)}
-              onClick={() => saveProposals(proposals.filter((item) => item.selected))}
-            >
-              Save selected ({proposals.filter((item) => item.selected).length})
-            </button>
-            <button className="btn" onClick={() => saveProposals(proposals)}>
-              Save all
-            </button>
-            <div className="topbar-spacer" />
-            <button className="btn btn-ghost" onClick={() => setProposals([])}>
-              Discard
-            </button>
-          </div>
         </div>
       )}
 
