@@ -99,3 +99,65 @@ describe("extractPromptCandidates", () => {
     expect(replyOffersPrompts("No prompts here, just chatting.")).toBe(false);
   });
 });
+
+/** Real gpt-5.2 output: numbered prompts whose bodies contain their own headings. */
+const NESTED_HEADINGS_REPLY = `Here are three:
+
+1) Design QA Spec Extractor
+Act as a design QA lead.
+
+Known context
+- Screen/flow name(s): {{scope}}
+- Requirements: {{requirements}}
+
+Process
+- For each screen, provide a table with columns
+- C. State Coverage Matrix
+
+Return exactly
+- Open Questions / Ambiguities
+
+2) Visual Regression & Diff Triage
+Act as a visual QA engineer.
+
+Known context
+- Screen/flow: {{screen}}
+
+Process
+- Decide disposition
+- Return a Markdown table
+
+Rules
+- Never guess at intent.
+
+3) End-to-End Design QA Test Plan
+Act as a release manager.
+
+Known context
+- Known risky areas: {{risks}}
+
+Process
+- Execution Plan (Ordered)
+- Exploratory Charters
+
+Constraints
+- Keep it to one page.`;
+
+describe("nested headings inside a prompt body", () => {
+  it("does not split a prompt at its own section headings", () => {
+    const found = extractPromptCandidates(NESTED_HEADINGS_REPLY);
+    expect(found).toHaveLength(3);
+    expect(found.map((c) => c.title)).toEqual([
+      "Design QA Spec Extractor",
+      "Visual Regression & Diff Triage",
+      "End-to-End Design QA Test Plan",
+    ]);
+  });
+
+  it("keeps each prompt's own sections in its body", () => {
+    const [first] = extractPromptCandidates(NESTED_HEADINGS_REPLY);
+    expect(first.content).toContain("Known context");
+    expect(first.content).toContain("Process");
+    expect(first.content).not.toContain("Visual Regression");
+  });
+});

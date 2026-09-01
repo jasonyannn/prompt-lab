@@ -18,30 +18,76 @@ export type PromptCandidate = {
   content: string;
 };
 
-/** "1) **Build Brief**" / "### 2. Build Brief" / "- **Build Brief**" */
-const HEADING = /^\s{0,3}(?:#{2,4}\s*)?(?:\d{1,2}[).:]|[-*•])?\s*(?:\*\*|__)?([^*_\n]{3,80}?)(?:\*\*|__)?\s*:?\s*$/;
+/**
+ * Prompt Lab's own prompts contain section headings — "Known context",
+ * "Process", "Return exactly" — so any rule that treats every short line as a
+ * title splits one prompt into a dozen. Titles are therefore detected by tier,
+ * and only the strongest tier present in a reply is used:
+ *
+ *   1. numbered items   "1) Build Brief"  /  "2. Build Brief"
+ *   2. markdown headings "### Build Brief"
+ *   3. bold-only lines   "**Build Brief**"
+ *
+ * A reply that numbers its prompts therefore never treats an inner heading as
+ * the start of a new prompt.
+ */
+const NUMBERED = /^\s{0,3}(?:[*-]\s*)?\*{0,2}(\d{1,2})[).:]\s*\*{0,2}\s*(.+?)\s*\*{0,2}\s*$/;
+const MARKDOWN_HEADING = /^\s{0,3}#{2,4}\s+(.+?)\s*$/;
+const BOLD_LINE = /^\s{0,3}(?:\*\*|__)([^*_\n]{3,80})(?:\*\*|__)\s*:?\s*$/;
 
-/** A line that is plainly prose rather than a title. */
-function looksLikeTitle(line: string): string | null {
-  const trimmed = line.trim();
-  if (!trimmed) return null;
-  if (trimmed.endsWith("?")) return null;
-  if (trimmed.startsWith(">")) return null;
-  if (trimmed.startsWith("```")) return null;
+type Tier = "numbered" | "heading" | "bold";
 
-  const match = HEADING.exec(trimmed);
-  if (!match) return null;
-
-  const title = match[1]
-    .replace(/[*_`]/g, "")
+function cleanTitle(raw: string): string | null {
+  const title = raw
+    .replace(/[*_`#]/g, "")
     .replace(/\s*[—–-]\s*$/, "")
+    .replace(/:\s*$/, "")
     .trim();
 
   if (title.length < 3 || title.length > 80) return null;
-  // A full sentence is a paragraph, not a heading.
+  if (title.endsWith("?")) return null;
   if (title.split(/\s+/).length > 12) return null;
   if (/[.!]$/.test(title)) return null;
   return title;
+}
+
+/** Returns the title for a line, if it belongs to the tier in play. */
+function titleForTier(line: string, tier: Tier): string | null {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith(">")) return null;
+
+  if (tier === "numbered") {
+    const match = NUMBERED.exec(trimmed);
+    return match ? cleanTitle(match[2]) : null;
+  }
+  if (tier === "heading") {
+    const match = MARKDOWN_HEADING.exec(trimmed);
+    return match ? cleanTitle(match[1]) : null;
+  }
+  const match = BOLD_LINE.exec(trimmed);
+  return match ? cleanTitle(match[1]) : null;
+}
+
+/** The strongest title style the reply actually uses. */
+function detectTier(lines: string[]): Tier | null {
+  let inFence = false;
+  const counts = { numbered: 0, heading: 0, bold: 0 };
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (titleForTier(line, "numbered")) counts.numbered += 1;
+    else if (titleForTier(line, "heading")) counts.heading += 1;
+    else if (titleForTier(line, "bold")) counts.bold += 1;
+  }
+
+  if (counts.numbered > 0) return "numbered";
+  if (counts.heading > 0) return "heading";
+  if (counts.bold > 0) return "bold";
+  return null;
 }
 
 /** Enough substance to be worth saving, rather than a one-line bullet. */
@@ -51,6 +97,9 @@ export function extractPromptCandidates(message: string): PromptCandidate[] {
   if (!message.trim()) return [];
 
   const lines = message.split("\n");
+  const tier = detectTier(lines);
+  if (!tier) return [];
+
   const candidates: PromptCandidate[] = [];
 
   let title: string | null = null;
@@ -96,7 +145,7 @@ export function extractPromptCandidates(message: string): PromptCandidate[] {
       continue;
     }
 
-    const heading = looksLikeTitle(line);
+    const heading = titleForTier(line, tier);
     if (heading) {
       flush();
       title = heading;
