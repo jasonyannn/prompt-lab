@@ -3581,6 +3581,98 @@ html[data-underline-links="on"] a {
     var(--panel-2);
 }
 
+/* Ticking prompts straight out of a reply --------------------------------- */
+
+.reply-picker {
+  margin-top: 11px;
+  padding: 10px;
+  border: 1px solid var(--accent);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.reply-picker-head {
+  display: grid;
+  gap: 1px;
+  margin-bottom: 8px;
+}
+
+.reply-picker-head strong {
+  font-size: 12px;
+}
+
+.reply-picker-head span {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.reply-picker-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reply-picker-list li {
+  border: 1px solid var(--line-soft);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.reply-picker-list label,
+.reply-picker-saved {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 7px 9px;
+  cursor: pointer;
+}
+
+.reply-picker-saved {
+  cursor: default;
+  color: var(--good);
+}
+
+.reply-picker-list input {
+  margin-top: 2px;
+  accent-color: var(--accent);
+}
+
+.reply-picker-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.reply-picker-copy strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-picker-copy small {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 10.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reply-picker-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  margin-top: 9px;
+}
+
+.reply-picker-actions .btn {
+  padding: 5px 11px;
+  font-size: 11.5px;
+}
+
 /* Agent manager ---------------------------------------------------------- */
 
 .agent-panel {
