@@ -15,135 +15,36 @@
  * dropped by `isPubliclyListable` before it can reach a caller.
  */
 
-import { getJourneys, getPrompts as getCatalogPrompts, getCategory } from "./catalog";
-import { PROMPT_TEMPLATES } from "./promptGenerator";
 import { promptStore } from "./promptStore";
 import { agentStore } from "./agentStore";
+import { collectCatalogRecords } from "./catalogProducts";
+import {
+  isPubliclyListable,
+  searchProductRecords,
+  type ProductRecord,
+  type ProductSearchInput,
+  type ProductSearchResult,
+} from "./productSearch";
 
-export type ProductType = "prompt" | "journey" | "prompt_pack" | "agent_template";
-
-/** The shape returned across the WebMCP boundary. */
-export type Product = {
-  id: string;
-  name: string;
-  description: string;
-  category: string;
-  type: ProductType;
-};
-
-/**
- * A product plus the fields used for matching and access control. Never
- * returned to a caller — `toProduct` strips it back to the public shape.
- */
-export type ProductRecord = Product & {
-  /** name + description + category + tags + content, lowercased. */
-  searchText: string;
-  /** Anything not publicly listable, e.g. a private forum post. */
-  visibility?: "public" | "unlisted" | "private";
-};
-
-export type ProductSearchInput = {
-  query?: string;
-  category?: string;
-  limit?: number;
-};
-
-export type ProductSearchResult = {
-  products: Product[];
-  count: number;
-};
-
-export const DEFAULT_LIMIT = 20;
-export const MAX_LIMIT = 50;
+export { collectCatalogRecords } from "./catalogProducts";
+export {
+  DEFAULT_LIMIT,
+  MAX_LIMIT,
+  isPubliclyListable,
+  type Product,
+  type ProductRecord,
+  type ProductSearchInput,
+  type ProductSearchResult,
+  type ProductType,
+} from "./productSearch";
 
 function searchable(parts: (string | undefined | null)[]) {
   return parts.filter(Boolean).join(" ").toLowerCase();
 }
 
-function toProduct(record: ProductRecord): Product {
-  return {
-    id: record.id,
-    name: record.name,
-    description: record.description,
-    category: record.category,
-    type: record.type,
-  };
-}
-
-/**
- * The access-control gate. A resource is listable only when it carries no
- * visibility flag (public by construction, like the catalog) or is explicitly
- * public. Private and unlisted resources never leave this module.
- */
-export function isPubliclyListable(record: ProductRecord): boolean {
-  return record.visibility === undefined || record.visibility === "public";
-}
-
 /* ------------------------------------------------------------------ *
  * Building records from the app's real data
  * ------------------------------------------------------------------ */
-
-/** Catalog prompts, journeys, prompt packs and agent templates. */
-export function collectCatalogRecords(): ProductRecord[] {
-  const records: ProductRecord[] = [];
-
-  for (const spec of getCatalogPrompts()) {
-    const categoryName = getCategory(spec.categoryId)?.name ?? spec.categoryId;
-    records.push({
-      id: spec.id,
-      name: spec.title,
-      description: spec.summary,
-      category: categoryName,
-      type: "prompt",
-      searchText: searchable([
-        spec.title,
-        spec.summary,
-        categoryName,
-        spec.subcategoryId,
-        spec.tier,
-        spec.tags.join(" "),
-        spec.objective,
-        spec.role,
-      ]),
-    });
-  }
-
-  for (const journey of getJourneys()) {
-    const categoryName = getCategory(journey.categoryId)?.name ?? journey.categoryId;
-    records.push({
-      id: journey.id,
-      name: journey.name,
-      description: journey.outcome,
-      category: categoryName,
-      type: "journey",
-      searchText: searchable([
-        journey.name,
-        journey.outcome,
-        journey.goal,
-        categoryName,
-        journey.steps.map((step) => step.note).join(" "),
-      ]),
-    });
-  }
-
-  for (const template of PROMPT_TEMPLATES) {
-    records.push({
-      id: `pack-${template.id}`,
-      name: template.name,
-      description: template.description,
-      category: "Prompt pack",
-      type: "prompt_pack",
-      searchText: searchable([
-        template.name,
-        template.description,
-        template.eyebrow,
-        "prompt pack workflow",
-      ]),
-    });
-  }
-
-  return records;
-}
 
 /**
  * The signed-in browser's own resources: saved prompts and agent templates.
@@ -205,18 +106,6 @@ export function collectProductRecords(): ProductRecord[] {
  * Search
  * ------------------------------------------------------------------ */
 
-function score(record: ProductRecord, terms: string[]): number {
-  if (terms.length === 0) return 1;
-  const name = record.name.toLowerCase();
-
-  let total = 0;
-  for (const term of terms) {
-    if (name.includes(term)) total += 3;
-    else if (record.searchText.includes(term)) total += 1;
-  }
-  return total;
-}
-
 /**
  * Searches Prompt Lab resources. `records` is injectable so the behaviour can
  * be tested without a browser; it defaults to the app's real data.
@@ -225,28 +114,5 @@ export function searchProducts(
   input: ProductSearchInput = {},
   records: ProductRecord[] = collectProductRecords()
 ): ProductSearchResult {
-  const query = (input.query ?? "").trim().toLowerCase();
-  const terms = query.split(/\s+/).filter(Boolean);
-  const category = (input.category ?? "").trim().toLowerCase();
-
-  const requested = Number(input.limit);
-  const limit = Number.isFinite(requested)
-    ? Math.max(1, Math.min(MAX_LIMIT, Math.floor(requested)))
-    : DEFAULT_LIMIT;
-
-  const matched = records
-    // Defence in depth: filter again, even though collect already did.
-    .filter(isPubliclyListable)
-    .filter((record) =>
-      category ? record.category.toLowerCase() === category : true
-    )
-    .map((record) => ({ record, weight: score(record, terms) }))
-    .filter((entry) => entry.weight > 0)
-    .sort(
-      (a, b) =>
-        b.weight - a.weight || a.record.name.localeCompare(b.record.name)
-    );
-
-  const products = matched.slice(0, limit).map((entry) => toProduct(entry.record));
-  return { products, count: products.length };
+  return searchProductRecords(input, records);
 }

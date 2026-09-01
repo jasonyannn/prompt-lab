@@ -24,6 +24,7 @@ export type RemoteMCPState = {
 };
 
 const FALLBACK_TOOLS = [
+  "search_products",
   "list_agents",
   "create_agent",
   "update_agent",

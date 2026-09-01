@@ -37,6 +37,7 @@ agent knowledge remain device-local and are not exposed by the remote server.
 
 | Tool | Purpose |
 |---|---|
+| `search_products` | Search the public catalog plus shared remote prompts and agent templates |
 | `list_agents` | List reusable remote agent profiles |
 | `create_agent` / `update_agent` | Maintain remote agent profiles |
 | `search_prompts` / `get_prompt` | Discover and read shared prompts |
@@ -352,7 +353,7 @@ src/
   App.tsx                root; calls useWebMCP()
 server/
   index.ts               Cloudflare Worker routing, CORS and /mcp mount
-  mcp.ts                 remote MCP server and 15 tool definitions
+  mcp.ts                 remote MCP server and 16 tool definitions
   database.ts            D1 persistence, seeds, versions and activity
 db/schema.ts             Drizzle source schema
 drizzle/                 generated D1 migration
