@@ -106,10 +106,10 @@ describe("AgentChat structured prompt flow", () => {
         container,
         "I'm building a design AI app. What prompts should I create?"
       )?.click();
-      await vi.waitFor(() => {
-        expect(container.querySelectorAll(".inline-prompt-row")).toHaveLength(5);
-      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
     });
+    expect(container.innerHTML).toContain("inline-prompt-row");
+    expect(container.querySelectorAll(".inline-prompt-row")).toHaveLength(5);
 
     const assistantBubble = container.querySelector(".bubble-assistant");
     expect(assistantBubble?.querySelectorAll(".inline-prompt-row")).toHaveLength(5);
