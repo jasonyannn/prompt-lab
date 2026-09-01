@@ -23,7 +23,7 @@ const STEPS = [
   {
     n: "01",
     title: "Connect from anywhere",
-    body: "Give an external agent the /mcp URL. It discovers a typed Streamable HTTP tool surface without opening or clicking through the interface.",
+    body: "Give an external agent the /mcp/ URL. It discovers a typed Streamable HTTP tool surface without opening or clicking through the interface.",
   },
   {
     n: "02",
@@ -254,7 +254,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
             Most web apps make an agent read pixels and guess at buttons. Prompt
             Lab hands it typed tools instead — in the browser through native{" "}
             <code>document.modelContext</code>, and over the web through a real{" "}
-            <code>/mcp</code> endpoint for external agents.
+            <code>/mcp/</code> endpoint for external agents.
           </p>
 
           <div className="hero-cta">
