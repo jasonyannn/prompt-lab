@@ -167,3 +167,56 @@ export function extractPromptCandidates(message: string): PromptCandidate[] {
 export function replyOffersPrompts(message: string): boolean {
   return extractPromptCandidates(message).length > 0;
 }
+
+/* ------------------------------------------------------------------ *
+ * Menus of prompt ideas
+ * ------------------------------------------------------------------ */
+
+/**
+ * The agent often lists prompt *ideas* rather than writing the prompts, then
+ * asks the user to reply with which ones they want. That reply is a typing
+ * task the UI can do better: these are the pickable options.
+ *
+ * Distinct from `extractPromptCandidates`, which finds prompts already written
+ * out in full. An offer is one line — a title and a short description.
+ */
+export type PromptOffer = {
+  id: string;
+  title: string;
+  summary: string;
+};
+
+/** "- **Design System Starter**: output a minimal design system." */
+const OFFER =
+  /^\s{0,3}(?:[-*•]|\d{1,2}[).])\s*(?:\*\*|__)?([^*_:—–\n]{3,60}?)(?:\*\*|__)?\s*(?::|—|–)\s*(.+?)\s*$/;
+
+export function extractPromptOffers(message: string): PromptOffer[] {
+  if (!message.trim()) return [];
+
+  const offers: PromptOffer[] = [];
+  let inFence = false;
+
+  for (const line of message.split("\n")) {
+    if (line.trim().startsWith("```")) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+
+    const match = OFFER.exec(line.trim());
+    if (!match) continue;
+
+    const title = match[1].replace(/[*_`]/g, "").trim();
+    const summary = match[2].replace(/[*_`]/g, "").trim();
+
+    // A question is the agent interviewing, not offering.
+    if (summary.endsWith("?") || title.endsWith("?")) continue;
+    if (title.split(/\s+/).length > 8) continue;
+    if (summary.length < 10 || summary.length > 220) continue;
+
+    offers.push({ id: `o${offers.length}`, title, summary });
+  }
+
+  // One bullet is not a menu.
+  return offers.length >= 2 ? offers : [];
+}

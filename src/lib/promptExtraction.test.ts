@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { extractPromptCandidates, replyOffersPrompts } from "./promptExtraction";
+import {
+  extractPromptCandidates,
+  extractPromptOffers,
+  replyOffersPrompts,
+} from "./promptExtraction";
 
 /** The shape gpt-5.2 actually returns when it lists prompts instead of calling the tool. */
 const NUMBERED_REPLY = `Here are three prompts for your design AI app:
@@ -159,5 +163,40 @@ describe("nested headings inside a prompt body", () => {
     expect(first.content).toContain("Known context");
     expect(first.content).toContain("Process");
     expect(first.content).not.toContain("Visual Regression");
+  });
+});
+
+/** The real shape: the agent lists ideas and asks the user to reply. */
+const OFFER_REPLY = `Great — here's what I'd build for a design AI app:
+
+- **Design System Starter**: output a minimal design system (tokens + component inventory + usage rules).
+- **Critique + Iteration Loop**: evaluate a design spec against heuristics/a11y and propose revisions.
+- **Handoff Package**: produce dev-ready acceptance criteria + interaction notes + test cases.
+
+Reply with: (a) your answers to the 3 questions, and (b) which 4–6 of the above you want created first.`;
+
+describe("extractPromptOffers", () => {
+  it("reads a menu of prompt ideas the agent is offering", () => {
+    const offers = extractPromptOffers(OFFER_REPLY);
+    expect(offers).toHaveLength(3);
+    expect(offers.map((o) => o.title)).toEqual([
+      "Design System Starter",
+      "Critique + Iteration Loop",
+      "Handoff Package",
+    ]);
+    expect(offers[0].summary).toContain("minimal design system");
+  });
+
+  it("does not treat a single bullet as a menu", () => {
+    expect(extractPromptOffers("- **Only one**: not a menu here.")).toHaveLength(0);
+  });
+
+  it("ignores question bullets", () => {
+    const questions = `- **Audience**: who is this for?\n- **Outputs**: what should it produce?`;
+    expect(extractPromptOffers(questions)).toHaveLength(0);
+  });
+
+  it("does not fire on a reply that already contains full prompts", () => {
+    expect(extractPromptCandidates(OFFER_REPLY)).toHaveLength(0);
   });
 });

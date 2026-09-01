@@ -22,7 +22,10 @@ import { useCategories } from "../hooks/useCategories";
 import { promptStore } from "../lib/promptStore";
 import { categoryStore } from "../lib/categoryStore";
 import { conversationStore, type Conversation } from "../lib/conversationStore";
-import { extractPromptCandidates } from "../lib/promptExtraction";
+import {
+  extractPromptCandidates,
+  extractPromptOffers,
+} from "../lib/promptExtraction";
 import { usePrompts } from "../hooks/usePrompts";
 
 const SUGGESTIONS = [
@@ -80,6 +83,8 @@ export function AgentChat({ agents }: Props) {
   /** Which extracted prompts are ticked, keyed by "<messageIndex>:<candidateId>". */
   const [pickedFromReply, setPickedFromReply] = useState<Record<string, boolean>>({});
   const [savedFromReply, setSavedFromReply] = useState<Record<string, string>>({});
+  /** Which offered ideas are ticked, keyed by "<messageIndex>:<offerId>". */
+  const [pickedOffers, setPickedOffers] = useState<Record<string, boolean>>({});
   const [status, setStatus] = useState<OllamaStatus>({ state: "checking" });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -212,6 +217,22 @@ export function AgentChat({ agents }: Props) {
     }
     // Each saved row switches to a ✓ in place, which is the feedback.
     setSavedFromReply((current) => ({ ...current, ...saved }));
+  }
+
+  /**
+   * The agent listed ideas and asked the user to reply with which ones they
+   * want. Ticking them here sends that answer for them, and tells the agent to
+   * write the prompts rather than asking anything further.
+   */
+  function createFromOffers(titles: string[]) {
+    if (titles.length === 0 || busy) return;
+    const list = titles.map((title) => `- ${title}`).join("\n");
+    void send(
+      `Create these prompts now, one create_prompt call each, with the full prompt text in the content field. Do not ask any further questions and do not list them again:\n${list}`,
+      titles.length === 1
+        ? `Create: ${titles[0]}`
+        : `Create these ${titles.length}: ${titles.join(", ")}`
+    );
   }
 
   function toggleProposal(id: string) {
@@ -471,6 +492,75 @@ export function AgentChat({ agents }: Props) {
           return (
             <div className={`bubble bubble-${message.role}`} key={index}>
               <span>{message.display_content ?? message.content}</span>
+
+              {candidates.length === 0 &&
+                message.role === "assistant" &&
+                (() => {
+                  const offers = extractPromptOffers(message.content);
+                  if (offers.length === 0) return null;
+                  const ticked = offers.filter(
+                    (offer) => pickedOffers[`${index}:${offer.id}`]
+                  );
+
+                  return (
+                    <div className="reply-picker">
+                      <div className="reply-picker-head">
+                        <strong>Pick what you want built</strong>
+                        <span>
+                          Tick these instead of typing a reply — the agent writes
+                          the ones you choose.
+                        </span>
+                      </div>
+
+                      <ul className="reply-picker-list">
+                        {offers.map((offer) => {
+                          const key = `${index}:${offer.id}`;
+                          return (
+                            <li key={offer.id}>
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={Boolean(pickedOffers[key])}
+                                  onChange={(event) =>
+                                    setPickedOffers((current) => ({
+                                      ...current,
+                                      [key]: event.target.checked,
+                                    }))
+                                  }
+                                />
+                                <span className="reply-picker-copy">
+                                  <strong>{offer.title}</strong>
+                                  <small>{offer.summary}</small>
+                                </span>
+                              </label>
+                            </li>
+                          );
+                        })}
+                      </ul>
+
+                      <div className="reply-picker-actions">
+                        <button
+                          className="btn btn-primary"
+                          disabled={ticked.length === 0 || busy}
+                          onClick={() =>
+                            createFromOffers(ticked.map((offer) => offer.title))
+                          }
+                        >
+                          Create selected ({ticked.length})
+                        </button>
+                        <button
+                          className="btn"
+                          disabled={busy}
+                          onClick={() =>
+                            createFromOffers(offers.map((offer) => offer.title))
+                          }
+                        >
+                          Create all {offers.length}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
 
               {candidates.length > 0 && (
                 <div className="reply-picker">
