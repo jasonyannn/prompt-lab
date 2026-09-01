@@ -83,6 +83,10 @@ describe("AgentChat structured prompt flow", () => {
   beforeEach(() => {
     localStorage.clear();
     Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      callback(performance.now());
+      return 1;
+    });
     container = document.createElement("div");
     document.body.append(container);
     root = createRoot(container);
@@ -91,6 +95,7 @@ describe("AgentChat structured prompt flow", () => {
   afterEach(() => {
     act(() => root.unmount());
     container.remove();
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -136,17 +141,16 @@ describe("AgentChat structured prompt flow", () => {
 
     await act(async () => {
       buttonWithText(container, "Save selected (4)")?.click();
-      await vi.waitFor(() => {
-        expect(container.querySelectorAll(".inline-prompt-row.is-saved")).toHaveLength(4);
-      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
     });
+    expect(container.innerHTML).toContain("inline-prompt-row is-saved");
+    expect(container.querySelectorAll(".inline-prompt-row.is-saved")).toHaveLength(4);
 
     await act(async () => {
       buttonWithText(container, "Save all")?.click();
-      await vi.waitFor(() => {
-        expect(container.querySelectorAll(".inline-prompt-row.is-saved")).toHaveLength(5);
-      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
     });
+    expect(container.querySelectorAll(".inline-prompt-row.is-saved")).toHaveLength(5);
 
     const saved = promptStore
       .getAll()
