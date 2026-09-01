@@ -2,7 +2,8 @@
  * Pulling saveable prompts out of a written reply.
  *
  * The agent is told to propose prompts through `create_prompt`, which stages
- * them in the review tray. It does not always comply — models like writing
+ * them as structured rows inside the assistant response. It does not always
+ * comply — models like writing
  * numbered lists — and a prompt the user cannot tick and save is useless to
  * them.
  *

@@ -92,10 +92,19 @@ describe("search_products tool contract", () => {
       "get_prompt",
       "create_prompt",
       "update_prompt",
+      "delete_prompt",
+      "create_agent",
+      "get_agent_prompts",
       "rate_prompt",
       "record_prompt_use",
     ]) {
       expect(names).toContain(required);
+    }
+  });
+
+  it("closes every top-level input schema to unknown fields", () => {
+    for (const tool of PROMPT_TOOLS) {
+      expect(tool.inputSchema.additionalProperties, tool.name).toBe(false);
     }
   });
 });
@@ -129,6 +138,17 @@ describe("registration through document.modelContext.registerTool", () => {
       (document as unknown as { modelContext?: unknown }).modelContext
     ).toBeUndefined();
     await expect(registerPromptTools()).resolves.toBeNull();
+  });
+
+  it("reports unavailable when every browser registration fails", async () => {
+    const registerTool = vi.fn().mockRejectedValue(new Error("unsupported"));
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    (document as unknown as { modelContext: unknown }).modelContext = {
+      registerTool,
+    };
+
+    await expect(registerPromptTools()).resolves.toBeNull();
+    consoleError.mockRestore();
   });
 });
 
@@ -216,6 +236,21 @@ describe("privacy boundaries", () => {
 });
 
 describe("end to end through executeTool", () => {
+  it("lists prompts owned by a requested agent", async () => {
+    localStorage.clear();
+    const result = await executeTool("get_agent_prompts", {
+      agent_id: "design-partner",
+    });
+    const text = result.content.find((part) => part.type === "text");
+    const payload = JSON.parse((text as { type: "text"; text: string }).text);
+
+    expect(result.isError).toBeFalsy();
+    expect(payload.agent.id).toBe("design-partner");
+    expect(payload.prompts.map((prompt: { id: string }) => prompt.id)).toContain(
+      "ux-audit"
+    );
+  });
+
   it("searches the app's real catalog and returns the product shape", async () => {
     const result = await executeTool("search_products", {
       query: "cover letter",
