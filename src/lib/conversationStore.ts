@@ -37,6 +37,7 @@ function slim(message: ChatMessage): ChatMessage {
   if (message.display_content) slimmed.display_content = message.display_content;
   if (message.tool_name) slimmed.tool_name = message.tool_name;
   if (message.tool_calls?.length) slimmed.tool_calls = message.tool_calls;
+  if (message.prompts?.length) slimmed.prompts = message.prompts;
   if (message.attachments?.length) {
     slimmed.attachments = message.attachments.map(
       ({ dataUrl: _dataUrl, ...rest }) => rest
