@@ -2,7 +2,7 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import { sites } from "@openai/sites-vite-plugin";
 import { build } from "esbuild";
-import { mkdir } from "node:fs/promises";
+import { cp, mkdir, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import {
   chatWithModel,
@@ -19,7 +19,9 @@ function promptLabWorker() {
     apply: "build" as const,
     async closeBundle() {
       const serverDirectory = resolve("dist/server");
+      const clientDirectory = resolve("dist/client");
       await mkdir(serverDirectory, { recursive: true });
+      await mkdir(clientDirectory, { recursive: true });
       await build({
         entryPoints: [resolve("server/index.ts")],
         outfile: resolve(serverDirectory, "index.js"),
@@ -32,6 +34,40 @@ function promptLabWorker() {
         sourcemap: false,
         legalComments: "none",
       });
+
+      await cp(resolve("dist/index.html"), resolve(clientDirectory, "index.html"));
+      await cp(resolve("dist/assets"), resolve(clientDirectory, "assets"), {
+        recursive: true,
+      });
+      for (const entry of await readdir(resolve("public"))) {
+        await cp(resolve("public", entry), resolve(clientDirectory, entry), {
+          recursive: true,
+        });
+      }
+
+      await writeFile(
+        resolve(serverDirectory, "wrangler.json"),
+        JSON.stringify({
+          name: "prompt-lab",
+          compatibility_date: "2026-05-15",
+          main: "index.js",
+          no_bundle: true,
+          rules: [{ type: "ESModule", globs: ["**/*.js", "**/*.mjs"] }],
+          assets: {
+            directory: "../client",
+            binding: "ASSETS",
+            run_worker_first: true,
+          },
+          d1_databases: [
+            {
+              binding: "DB",
+              database_name: "site-creator-d1",
+              database_id: "00000000-0000-4000-8000-000000000000",
+            },
+          ],
+          observability: { enabled: true },
+        })
+      );
     },
   };
 }
