@@ -22,6 +22,7 @@ import { useCategories } from "../hooks/useCategories";
 import { promptStore } from "../lib/promptStore";
 import { categoryStore } from "../lib/categoryStore";
 import { conversationStore, type Conversation } from "../lib/conversationStore";
+import { extractPromptCandidates } from "../lib/promptExtraction";
 import { usePrompts } from "../hooks/usePrompts";
 
 const SUGGESTIONS = [
@@ -76,6 +77,9 @@ export function AgentChat({ agents }: Props) {
   const [showHistory, setShowHistory] = useState(false);
   const [showPrompts, setShowPrompts] = useState(false);
   const [promptQuery, setPromptQuery] = useState("");
+  /** Which extracted prompts are ticked, keyed by "<messageIndex>:<candidateId>". */
+  const [pickedFromReply, setPickedFromReply] = useState<Record<string, boolean>>({});
+  const [savedFromReply, setSavedFromReply] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<OllamaStatus>({ state: "checking" });
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -185,6 +189,33 @@ export function AgentChat({ agents }: Props) {
     } finally {
       setBusy(false);
     }
+  }
+
+  function saveFromReply(
+    messageIndex: number,
+    candidates: { id: string; title: string; content: string }[]
+  ) {
+    if (candidates.length === 0) return;
+    const category = saveCategory ?? activeAgent?.defaultCategory ?? "General";
+    categoryStore.ensure(category);
+
+    const saved: Record<string, string> = {};
+    // Reversed so the first listed prompt ends up on top of the library.
+    for (const candidate of [...candidates].reverse()) {
+      const prompt = promptStore.create({
+        title: candidate.title,
+        content: candidate.content,
+        category,
+        agentId: activeAgent?.id,
+      });
+      saved[`${messageIndex}:${candidate.id}`] = prompt.id;
+    }
+    setSavedFromReply((current) => ({ ...current, ...saved }));
+    setMessage(
+      candidates.length === 1
+        ? `Saved "${candidates[0].title}" to ${category}.`
+        : `Saved ${candidates.length} prompts to ${category}.`
+    );
   }
 
   function toggleProposal(id: string) {
@@ -430,9 +461,105 @@ export function AgentChat({ agents }: Props) {
 
           if (!message.content) return null;
 
+          const candidates =
+            message.role === "assistant"
+              ? extractPromptCandidates(message.content)
+              : [];
+          const unsavedCandidates = candidates.filter(
+            (candidate) => !savedFromReply[`${index}:${candidate.id}`]
+          );
+          const tickedCandidates = unsavedCandidates.filter(
+            (candidate) => pickedFromReply[`${index}:${candidate.id}`]
+          );
+
           return (
             <div className={`bubble bubble-${message.role}`} key={index}>
               <span>{message.display_content ?? message.content}</span>
+
+              {candidates.length > 0 && (
+                <div className="reply-picker">
+                  <div className="reply-picker-head">
+                    <strong>
+                      {candidates.length} prompt
+                      {candidates.length === 1 ? "" : "s"} in this reply
+                    </strong>
+                    <span>Tick the ones you want to keep.</span>
+                  </div>
+
+                  <ul className="reply-picker-list">
+                    {candidates.map((candidate) => {
+                      const key = `${index}:${candidate.id}`;
+                      const savedId = savedFromReply[key];
+                      return (
+                        <li key={candidate.id}>
+                          {savedId ? (
+                            <span className="reply-picker-saved">
+                              <span aria-hidden="true">✓</span>
+                              <span className="reply-picker-copy">
+                                <strong>{candidate.title}</strong>
+                                <small>Saved to your library</small>
+                              </span>
+                            </span>
+                          ) : (
+                            <label>
+                              <input
+                                type="checkbox"
+                                checked={Boolean(pickedFromReply[key])}
+                                onChange={(event) =>
+                                  setPickedFromReply((current) => ({
+                                    ...current,
+                                    [key]: event.target.checked,
+                                  }))
+                                }
+                              />
+                              <span className="reply-picker-copy">
+                                <strong>{candidate.title}</strong>
+                                <small>
+                                  {candidate.content.slice(0, 80).replace(/\n/g, " ")}…
+                                </small>
+                              </span>
+                            </label>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+
+                  {unsavedCandidates.length > 0 && (
+                    <div className="reply-picker-actions">
+                      <label className="save-into">
+                        <span>Save into</span>
+                        <select
+                          className="select"
+                          value={
+                            saveCategory ?? activeAgent?.defaultCategory ?? "General"
+                          }
+                          onChange={(event) => setSaveCategory(event.target.value)}
+                        >
+                          {categories.map((name) => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <button
+                        className="btn btn-primary"
+                        disabled={tickedCandidates.length === 0}
+                        onClick={() => saveFromReply(index, tickedCandidates)}
+                      >
+                        Save ticked ({tickedCandidates.length})
+                      </button>
+                      <button
+                        className="btn"
+                        onClick={() => saveFromReply(index, unsavedCandidates)}
+                      >
+                        Save all {unsavedCandidates.length}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               {(message.attachments?.length ?? 0) > 0 && (
                 <ul className="message-attachments" aria-label="Message attachments">
                   {message.attachments?.map((attachment) => (
