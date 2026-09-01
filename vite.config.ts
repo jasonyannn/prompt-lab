@@ -11,7 +11,7 @@ import {
   generateWithModel,
   parseChatRequest,
   parseGenerateRequest,
-} from "./server/openai.ts";
+} from "./server/openai";
 
 function promptLabWorker() {
   return {
