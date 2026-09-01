@@ -3027,6 +3027,134 @@ select {
   color: var(--accent);
 }
 
+/* Forum profiles + visibility --------------------------------------------- */
+
+.visibility-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
+.visibility-row button {
+  padding: 5px 13px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11.5px;
+}
+
+.visibility-row button:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+.visibility-row button.is-active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.visibility-row small {
+  color: var(--text-faint);
+  font-size: 11px;
+}
+
+.author-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font: inherit;
+}
+
+.author-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.visibility-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--warn-soft, rgba(240, 184, 73, 0.15));
+  color: var(--warn);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.profile-head {
+  margin-bottom: 12px;
+}
+
+.profile-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-2);
+}
+
+.profile-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(140deg, var(--accent), var(--good));
+  color: #0b0d12;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.profile-identity {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.profile-identity strong {
+  font-size: 16px;
+  letter-spacing: -0.01em;
+}
+
+.profile-identity small {
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.profile-stats {
+  display: flex;
+  gap: 22px;
+  margin: 0;
+}
+
+.profile-stats dt {
+  color: var(--text-faint);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-stats dd {
+  margin: 2px 0 0;
+  font-family: var(--mono);
+  font-size: 20px;
+  font-weight: 600;
+}
+
 /* Agent manager ---------------------------------------------------------- */
 
 .agent-panel {

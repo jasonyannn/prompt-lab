@@ -1,6 +1,6 @@
 import { promptStore } from "./promptStore";
 import { supabase } from "./supabase";
-import type { ForumInsert, ForumPost } from "../types/forum";
+import type { AuthorProfile, ForumInsert, ForumPost } from "../types/forum";
 
 export type SessionUser = {
   id: string;
@@ -37,6 +37,7 @@ export async function getPublishedPosts(): Promise<ForumPost[]> {
       "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("status", "published")
+    .eq("visibility", "public")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -284,6 +285,96 @@ export async function updateCurrentProfile(input: {
   return data as UserProfile;
 }
 
+/**
+ * A profile by id, with the counts shown on it.
+ *
+ * The private count is only requested when you are looking at your own
+ * profile; for anyone else RLS returns nothing anyway, and asking would just
+ * produce a misleading zero.
+ */
+export async function getAuthorProfile(authorId: string): Promise<AuthorProfile> {
+  const viewer = await getSessionUser();
+  const isSelf = viewer?.id === authorId;
+
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, display_name, avatar_url, created_at")
+    .eq("id", authorId)
+    .maybeSingle();
+
+  if (profileError && profileError.code !== "PGRST116") {
+    throw new Error(`Could not load that profile: ${profileError.message}`);
+  }
+
+  const { count: publicCount, error: countError } = await supabase
+    .from("forum_posts")
+    .select("id", { count: "exact", head: true })
+    .eq("author_id", authorId)
+    .eq("status", "published")
+    .eq("visibility", "public");
+
+  if (countError) {
+    throw new Error(`Could not count those prompts: ${countError.message}`);
+  }
+
+  let privateCount: number | undefined;
+  if (isSelf) {
+    const { count, error } = await supabase
+      .from("forum_posts")
+      .select("id", { count: "exact", head: true })
+      .eq("author_id", authorId)
+      .neq("visibility", "public");
+    if (!error) privateCount = count ?? 0;
+  }
+
+  return {
+    id: authorId,
+    display_name: profile?.display_name ?? null,
+    avatar_url: profile?.avatar_url ?? null,
+    created_at: profile?.created_at ?? null,
+    public_post_count: publicCount ?? 0,
+    private_post_count: privateCount,
+  };
+}
+
+/** One author's public prompts. */
+export async function getAuthorPosts(authorId: string): Promise<ForumPost[]> {
+  const { data, error } = await supabase
+    .from("forum_posts")
+    .select(
+      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+    )
+    .eq("author_id", authorId)
+    .eq("status", "published")
+    .eq("visibility", "public")
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`Could not load those prompts: ${error.message}`);
+  return normalizeForumPosts(data ?? []);
+}
+
+/**
+ * Everything you have written, private posts included.
+ *
+ * The filter here is convenience, not a security boundary — RLS on
+ * forum_posts is what stops one account reading another's private prompts.
+ */
+export async function getMyPosts(): Promise<ForumPost[]> {
+  const user = await getSessionUser();
+  if (!user) return [];
+
+  const { data, error } = await supabase
+    .from("forum_posts")
+    .select(
+      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+    )
+    .eq("author_id", user.id)
+    .order("created_at", { ascending: false });
+
+  if (error) throw new Error(`Could not load your prompts: ${error.message}`);
+  return normalizeForumPosts(data ?? []);
+}
+
 export async function createForumPost(input: ForumInsert) {
   const user = await getSessionUser();
   const isAnonymous = input.anonymous ?? !user;
@@ -294,7 +385,8 @@ export async function createForumPost(input: ForumInsert) {
     content: input.content.trim(),
     category: input.category ?? "General",
     tags: input.tags ?? [],
-    visibility: input.visibility ?? "public",
+    // A private post needs an owner to scope it to, so anonymous forces public.
+    visibility: isAnonymous ? "public" : input.visibility ?? "public",
     status: "published",
   };
 

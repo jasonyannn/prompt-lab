@@ -2,6 +2,9 @@ import { useEffect, useState } from "react";
 import {
   createForumPost,
   getCurrentProfile,
+  getAuthorPosts,
+  getAuthorProfile,
+  getMyPosts,
   getPublishedPosts,
   getPublicProfileName,
   getSessionUser,
@@ -9,7 +12,7 @@ import {
   subscribeToAuthState,
   updateCurrentProfile,
 } from "../lib/forum";
-import type { ForumPost } from "../types/forum";
+import type { AuthorProfile, ForumPost, PostVisibility } from "../types/forum";
 
 export function Forum() {
   const [posts, setPosts] = useState<ForumPost[]>([]);
@@ -25,6 +28,12 @@ export function Forum() {
   const [profileDisplayName, setProfileDisplayName] = useState("");
   const [profileError, setProfileError] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
+  const [visibility, setVisibility] = useState<PostVisibility>("public");
+  /** null = the public feed; otherwise we are looking at one author. */
+  const [viewing, setViewing] = useState<AuthorProfile | null>(null);
+  const [viewingPosts, setViewingPosts] = useState<ForumPost[]>([]);
+  const [viewingSelf, setViewingSelf] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
 
   useEffect(() => {
     void loadPosts();
@@ -111,20 +120,51 @@ export function Forum() {
         content,
         category,
         tags: [],
-        visibility: "public",
+        visibility: !user || anonymous ? "public" : visibility,
         anonymous: !user || anonymous,
       });
       setTitle("");
       setContent("");
       setCategory("General");
       setAnonymous(true);
-      setMessage(user ? "Prompt published to the forum." : "Anonymous prompt published to the forum.");
+      const wasPrivate = user && !anonymous && visibility === "private";
+      setMessage(
+        wasPrivate
+          ? "Saved as a private prompt. Only you can see it."
+          : user
+            ? "Prompt published to the forum."
+            : "Anonymous prompt published to the forum."
+      );
       await loadPosts();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not publish the post.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function openProfile(authorId: string, self = false) {
+    setProfileLoading(true);
+    setError(null);
+    try {
+      const [profile, authored] = await Promise.all([
+        getAuthorProfile(authorId),
+        self ? getMyPosts() : getAuthorPosts(authorId),
+      ]);
+      setViewing(profile);
+      setViewingPosts(authored);
+      setViewingSelf(self);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not open that profile.");
+    } finally {
+      setProfileLoading(false);
+    }
+  }
+
+  function closeProfile() {
+    setViewing(null);
+    setViewingPosts([]);
+    setViewingSelf(false);
   }
 
   async function handleCopyPrompt(post: ForumPost) {
@@ -164,6 +204,12 @@ export function Forum() {
     <section className="panel forum-panel">
       <div className="panel-head">
         <h2>Forum</h2>
+        <div className="topbar-spacer" />
+        {user && !viewing && (
+          <button className="btn btn-ghost" onClick={() => void openProfile(user.id, true)}>
+            My prompts
+          </button>
+        )}
       </div>
 
       <div className="panel-body">
@@ -234,13 +280,45 @@ export function Forum() {
             value={content}
             onChange={(event) => setContent(event.target.value)}
           />
+          {user && !anonymous && (
+            <div className="visibility-row" role="group" aria-label="Who can see this prompt">
+              <button
+                type="button"
+                className={visibility === "public" ? "is-active" : ""}
+                aria-pressed={visibility === "public"}
+                onClick={() => setVisibility("public")}
+              >
+                Public
+              </button>
+              <button
+                type="button"
+                className={visibility === "private" ? "is-active" : ""}
+                aria-pressed={visibility === "private"}
+                onClick={() => setVisibility("private")}
+              >
+                Private
+              </button>
+              <small>
+                {visibility === "private"
+                  ? "Only you will see this. It stays out of the forum."
+                  : "Anyone can find this in the forum."}
+              </small>
+            </div>
+          )}
+
           <div className="forum-actions">
             <button
               className="btn btn-primary"
               onClick={() => void handleCreatePost()}
               disabled={loading}
             >
-              {loading ? "Publishing…" : user ? "Publish to forum" : "Publish anonymously"}
+              {loading
+                ? "Saving…"
+                : user && !anonymous && visibility === "private"
+                  ? "Save privately"
+                  : user
+                    ? "Publish to forum"
+                    : "Publish anonymously"}
             </button>
           </div>
         </div>
@@ -258,6 +336,83 @@ export function Forum() {
           </p>
         )}
 
+        {viewing ? (
+          <div className="profile-view">
+            <div className="profile-head">
+              <button className="btn btn-ghost" onClick={closeProfile}>
+                ← Back to forum
+              </button>
+            </div>
+
+            <div className="profile-card">
+              <span className="profile-avatar" aria-hidden="true">
+                {(viewing.display_name ?? "A").slice(0, 2).toUpperCase()}
+              </span>
+              <div className="profile-identity">
+                <strong>{viewing.display_name?.trim() || "Anonymous"}</strong>
+                {viewing.created_at && (
+                  <small>
+                    Joined {new Date(viewing.created_at).toLocaleDateString()}
+                  </small>
+                )}
+              </div>
+              <dl className="profile-stats">
+                <div>
+                  <dt>Public prompts</dt>
+                  <dd>{viewing.public_post_count}</dd>
+                </div>
+                {viewingSelf && viewing.private_post_count !== undefined && (
+                  <div>
+                    <dt>Private</dt>
+                    <dd>{viewing.private_post_count}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+
+            <div className="forum-list">
+              {profileLoading ? (
+                <p className="empty">Loading prompts…</p>
+              ) : viewingPosts.length === 0 ? (
+                <p className="empty">
+                  {viewingSelf
+                    ? "You have not published any prompts yet."
+                    : "This author has not published any public prompts yet."}
+                </p>
+              ) : (
+                viewingPosts.map((post) => (
+                  <article key={post.id} className="forum-post">
+                    <div className="forum-post-head">
+                      <strong>{post.title}</strong>
+                      <span>{post.category}</span>
+                    </div>
+                    <div className="forum-post-content">
+                      <pre>{post.content}</pre>
+                      <button
+                        className="copy-button"
+                        aria-label="Copy prompt"
+                        title="Copy to clipboard"
+                        onClick={() => void handleCopyPrompt(post)}
+                      >
+                        {copiedPostId === post.id ? "✓" : "⧉"}
+                      </button>
+                    </div>
+                    <div className="forum-post-meta">
+                      {post.visibility !== "public" ? (
+                        <span className="visibility-badge">Private</span>
+                      ) : (
+                        <span>Public</span>
+                      )}
+                      <div className="forum-post-tools">
+                        <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="forum-list">
           {posts.length === 0 ? (
             <p className="empty">No published prompts yet.</p>
@@ -280,7 +435,17 @@ export function Forum() {
                   </button>
                 </div>
                 <div className="forum-post-meta">
-                  <span>{getPublicProfileName(post.profiles)}</span>
+                  {post.author_id ? (
+                    <button
+                      className="author-link"
+                      onClick={() => void openProfile(post.author_id as string)}
+                      title="View this author's profile"
+                    >
+                      {getPublicProfileName(post.profiles)}
+                    </button>
+                  ) : (
+                    <span>Anonymous</span>
+                  )}
                   <div className="forum-post-tools">
                     <button
                       className="like-button"
@@ -298,6 +463,7 @@ export function Forum() {
             ))
           )}
         </div>
+        )}
       </div>
     </section>
   );
