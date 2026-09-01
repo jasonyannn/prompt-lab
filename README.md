@@ -49,6 +49,98 @@ agent knowledge remain device-local and are not exposed by the remote server.
 | `render_prompt` | Fill `{{variables}}` and record a use |
 | `delete_prompt` | Delete a prompt and its history after confirmation |
 
+## WebMCP
+
+Prompt Lab registers its tools directly against the browser's native model
+context. The WebMCP Challenge's required catalog-search capability is
+registered exactly as specified, from
+[`src/lib/webmcp.ts`](src/lib/webmcp.ts):
+
+```ts
+document.modelContext.registerTool({
+  name: "search_products",
+  description: "Search the product catalog",
+  inputSchema: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "Keywords to match against a resource's name, description, category, tags and prompt text." },
+      category: { type: "string", description: 'Restrict results to one category, e.g. "Career", "Travel" or "Prompt pack".' },
+      limit: { type: "number", description: "Maximum results to return, 1–50. Defaults to 20." },
+    },
+  },
+  execute: async (input) => {
+    const result = searchProducts({
+      query: input.query,
+      category: input.category,
+      limit: input.limit,
+    });
+    return { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] };
+  },
+});
+```
+
+Every tool in `PROMPT_TOOLS` — `search_products` included — is handed to
+`document.modelContext.registerTool()` by `registerPromptTools()`, so the call
+above is the real registration path rather than an illustration.
+
+### What "products" means here
+
+Prompt Lab does not sell anything. There is no store, no checkout and no
+inventory. For this generic catalog-search capability, **"product" means a
+reusable Prompt Lab resource**:
+
+| `type` | What it is | Source |
+|---|---|---|
+| `prompt` | A catalog prompt, or one saved in your library | `src/lib/catalogData.ts`, `promptStore` |
+| `journey` | An ordered path of prompts from a goal to a result | `src/lib/catalogData.ts` |
+| `prompt_pack` | A Prompt Studio workflow that generates a connected set | `src/lib/promptGenerator.ts` |
+| `agent_template` | A reusable agent profile: role, instructions, category | `agentStore` |
+
+The mapping lives only at the WebMCP boundary, in
+[`src/lib/products.ts`](src/lib/products.ts). Nothing in the UI, the stores or
+the database is renamed — a `Product` is derived on demand from real data and
+is never persisted. `search_products` reuses the same resources the rest of the
+app reads, so there is no parallel product database to drift out of sync.
+
+**Request**
+
+```json
+{ "query": "cover letter", "category": "Career", "limit": 3 }
+```
+
+**Response**
+
+```json
+{
+  "products": [
+    {
+      "id": "cr-cover",
+      "name": "Cover letter",
+      "description": "Short, specific, and clearly not a template.",
+      "category": "Career",
+      "type": "prompt"
+    }
+  ],
+  "count": 1
+}
+```
+
+Searches cover each resource's name, description, category, tags and — for
+prompts — the prompt body itself. Results are ranked with name matches weighted
+above body matches.
+
+### Privacy
+
+`search_products` only returns resources the current browser is entitled to
+see. Anything carrying a non-public visibility flag is dropped by
+`isPubliclyListable()` before it can reach a caller, and the filter is applied
+twice: once when records are collected and again during the search. Private and
+unlisted resources are never returned, including when a caller filters by the
+category they belong to.
+
+Calls are logged to the Activity panel as the tool name, the query, the result
+count and success or error. Result contents are never logged.
+
 ## The browser WebMCP integration
 
 Browser tools are registered against the browser's own model context. There is
