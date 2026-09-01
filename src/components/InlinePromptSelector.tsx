@@ -50,10 +50,19 @@ export function InlinePromptSelector({
               className={`inline-prompt-row${item.savedPromptId ? " is-saved" : ""}`}
               key={item.id}
             >
-              <label className="inline-prompt-main" htmlFor={checkboxId}>
-                {item.savedPromptId ? (
+              {item.savedPromptId ? (
+                <div className="inline-prompt-main">
                   <span className="inline-prompt-saved-mark" aria-hidden="true">✓</span>
-                ) : (
+                  <span className="inline-prompt-copy">
+                    <span className="inline-prompt-title-line">
+                      <strong>{item.title}</strong>
+                      <small className="saved-label">Saved</small>
+                    </span>
+                    <small>{preview(item.prompt)}</small>
+                  </span>
+                </div>
+              ) : (
+                <label className="inline-prompt-main" htmlFor={checkboxId}>
                   <input
                     id={checkboxId}
                     type="checkbox"
@@ -62,15 +71,14 @@ export function InlinePromptSelector({
                     aria-label={`Select ${item.title}`}
                     onChange={(event) => onToggle(item.id, event.target.checked)}
                   />
-                )}
-                <span className="inline-prompt-copy">
-                  <span className="inline-prompt-title-line">
-                    <strong>{item.title}</strong>
-                    {item.savedPromptId && <small className="saved-label">Saved</small>}
+                  <span className="inline-prompt-copy">
+                    <span className="inline-prompt-title-line">
+                      <strong>{item.title}</strong>
+                    </span>
+                    <small>{preview(item.prompt)}</small>
                   </span>
-                  <small>{preview(item.prompt)}</small>
-                </span>
-              </label>
+                </label>
+              )}
               {isLong && (
                 <details className="inline-prompt-details">
                   <summary>View full prompt</summary>

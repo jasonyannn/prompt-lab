@@ -4,6 +4,7 @@ import {
   assistantTextForStructuredPrompts,
   attachPromptsToAssistantMessage,
 } from "./chatPrompts";
+import { conversationStore } from "./conversationStore";
 
 const prompts: ChatPrompt[] = [
   {
@@ -67,5 +68,23 @@ Find friction across the cart and checkout experience, then recommend fixes.`;
   it("leaves an ordinary explanation unchanged", () => {
     const content = "I created two options that cover conversion and checkout.";
     expect(assistantTextForStructuredPrompts(content, prompts)).toBe(content);
+  });
+
+  it("preserves prompt selection and saved state in conversation history", () => {
+    localStorage.clear();
+    const messages: ChatMessage[] = [
+      { role: "user", content: "Create two prompts" },
+      {
+        role: "assistant",
+        content: "I created two reusable prompts:",
+        prompts: [{ ...prompts[0], selected: false, savedPromptId: "library-id" }],
+      },
+    ];
+
+    conversationStore.save("conversation", messages, "agent");
+
+    expect(conversationStore.get("conversation")?.messages[1].prompts).toEqual(
+      messages[1].prompts
+    );
   });
 });
