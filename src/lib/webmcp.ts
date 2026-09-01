@@ -75,6 +75,7 @@ export type ToolDescriptor = {
     type: "object";
     properties: Record<string, unknown>;
     required?: string[];
+    additionalProperties?: boolean | Record<string, unknown>;
   };
   annotations?: {
     readOnlyHint?: boolean;
@@ -315,7 +316,7 @@ function summarizeAgent(agent: PromptAgent) {
  * Tool definitions
  * ------------------------------------------------------------------ */
 
-export const PROMPT_TOOLS: ToolDescriptor[] = [
+const RAW_PROMPT_TOOLS: ToolDescriptor[] = [
   {
     name: "list_attachments",
     description:
@@ -1284,6 +1285,60 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
       );
 
       return ok({ count: results.length, results });
+    },
+  },
+
+  {
+    name: "get_agent_prompts",
+    description:
+      "List the prompts owned by one Prompt Lab agent. Returns the agent profile and scannable prompt previews; call get_prompt for a full prompt body.",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        agent_id: {
+          type: "string",
+          description: "Agent id returned by list_agents.",
+        },
+        limit: {
+          type: "number",
+          description: "Maximum number of prompts to return. Defaults to 25.",
+        },
+      },
+      required: ["agent_id"],
+    },
+    execute: (input) => {
+      const agentId = str(input, "agent_id");
+      const limit = num(input, "limit") ?? 25;
+      if (!agentId) {
+        logActivity("get_agent_prompts", input, "Missing agent_id", false);
+        return fail("`agent_id` is required.");
+      }
+
+      const agent = agentStore.get(agentId);
+      if (!agent) {
+        logActivity(
+          "get_agent_prompts",
+          input,
+          `No agent with id ${agentId}`,
+          false
+        );
+        return fail(`No agent found with id "${agentId}".`);
+      }
+
+      const prompts = promptStore
+        .getAll()
+        .filter((prompt) => prompt.agentId === agentId)
+        .slice(0, Math.max(1, limit))
+        .map(summarize);
+
+      logActivity(
+        "get_agent_prompts",
+        input,
+        `Listed ${prompts.length} prompts for "${agent.name}"`,
+        true
+      );
+      return ok({ agent: summarizeAgent(agent), count: prompts.length, prompts });
     },
   },
 
@@ -2373,6 +2428,19 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
   },
 ];
 
+/**
+ * Close every top-level schema to unknown fields. This keeps tool calls narrow
+ * and predictable across WebMCP, the hosted model, and the local model while
+ * preserving explicitly open nested maps such as prompt variables.
+ */
+export const PROMPT_TOOLS: ToolDescriptor[] = RAW_PROMPT_TOOLS.map((tool) => ({
+  ...tool,
+  inputSchema: {
+    ...tool.inputSchema,
+    additionalProperties: false,
+  },
+}));
+
 export const TOOL_NAMES = PROMPT_TOOLS.map((tool) => tool.name);
 
 /* ------------------------------------------------------------------ *
@@ -2389,15 +2457,22 @@ export async function registerPromptTools(): Promise<AbortController | null> {
   if (!modelContext) return null;
 
   const controller = new AbortController();
+  let registered = 0;
 
   for (const tool of PROMPT_TOOLS) {
     if (controller.signal.aborted) break;
     try {
       await modelContext.registerTool(tool, { signal: controller.signal });
+      registered += 1;
     } catch (error) {
       // A tool that fails to register should not take the rest down with it.
       console.error(`[webmcp] failed to register "${tool.name}"`, error);
     }
+  }
+
+  if (registered === 0) {
+    controller.abort();
+    return null;
   }
 
   return controller;
