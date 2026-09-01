@@ -213,6 +213,7 @@ export function Forum() {
       </div>
 
       <div className="panel-body">
+        {!viewing && (
         <div className="forum-identity">
           {user ? (
             <p>
@@ -236,30 +237,9 @@ export function Forum() {
             </>
           )}
         </div>
-
-        {user && (
-          <div className="forum-auth-box">
-            <p>Choose a public display name for forum posts.</p>
-            <div className="forum-actions">
-              <input
-                className="input"
-                placeholder="Display name"
-                value={profileDisplayName}
-                onChange={(event) => setProfileDisplayName(event.target.value)}
-              />
-              <button className="btn btn-primary" onClick={() => void handleSaveProfile()} disabled={savingProfile}>
-                {savingProfile ? "Saving…" : "Save display name"}
-              </button>
-            </div>
-            {profileError && (
-              <p className="notice is-bad">
-                <strong>Profile error</strong>
-                <span>{profileError}</span>
-              </p>
-            )}
-          </div>
         )}
 
+        {!viewing && (
         <div className="forum-compose">
 
           <input
@@ -322,6 +302,7 @@ export function Forum() {
             </button>
           </div>
         </div>
+        )}
 
         {error && (
           <p className="notice is-bad">
@@ -342,6 +323,9 @@ export function Forum() {
               <button className="btn btn-ghost" onClick={closeProfile}>
                 ← Back to forum
               </button>
+              <span className="profile-kicker">
+                {viewingSelf ? "Your profile" : "Author profile"}
+              </span>
             </div>
 
             <div className="profile-card">
@@ -369,6 +353,43 @@ export function Forum() {
                 )}
               </dl>
             </div>
+
+            {viewingSelf && (
+              <div className="profile-edit">
+                <label className="label" htmlFor="display-name">
+                  Your display name
+                </label>
+                <p className="profile-edit-note">
+                  This is the name shown on every prompt you publish.
+                </p>
+                <div className="profile-edit-row">
+                  <input
+                    id="display-name"
+                    className="input"
+                    placeholder="Display name"
+                    value={profileDisplayName}
+                    onChange={(event) => setProfileDisplayName(event.target.value)}
+                  />
+                  <button
+                    className="btn"
+                    onClick={() => void handleSaveProfile()}
+                    disabled={savingProfile}
+                  >
+                    {savingProfile ? "Saving…" : "Save"}
+                  </button>
+                </div>
+                {profileError && (
+                  <p className="notice is-bad">
+                    <strong>Profile error</strong>
+                    <span>{profileError}</span>
+                  </p>
+                )}
+              </div>
+            )}
+
+            <h3 className="profile-section-title">
+              {viewingSelf ? "Your prompts" : "Public prompts"}
+            </h3>
 
             <div className="forum-list">
               {profileLoading ? (
