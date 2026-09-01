@@ -16,6 +16,10 @@ export type PromptCandidate = {
   id: string;
   title: string;
   content: string;
+  /** Line index of the title, so the UI can render a control in place. */
+  titleLine: number;
+  /** Line index after the block ends. */
+  endLine: number;
 };
 
 /**
@@ -103,10 +107,11 @@ export function extractPromptCandidates(message: string): PromptCandidate[] {
   const candidates: PromptCandidate[] = [];
 
   let title: string | null = null;
+  let titleLine: number | null = null;
   let body: string[] = [];
   let inFence = false;
 
-  const flush = () => {
+  const flush = (end: number) => {
     if (!title) return;
 
     // Replies usually end with a question to the user — "Want me to save
@@ -125,14 +130,23 @@ export function extractPromptCandidates(message: string): PromptCandidate[] {
     const mostlyQuestions = lines.length > 0 && questions * 2 >= lines.length;
 
     if (content.length >= MIN_CONTENT && !mostlyQuestions) {
-      candidates.push({ id: `c${candidates.length}`, title, content });
+      candidates.push({
+        id: `c${candidates.length}`,
+        title,
+        content,
+        titleLine: titleLine ?? 0,
+        endLine: end,
+      });
     }
 
     title = null;
+    titleLine = null;
     body = [];
   };
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+
     if (line.trim().startsWith("```")) {
       inFence = !inFence;
       // Fence markers are dropped; the code inside is kept as prompt text.
@@ -147,15 +161,17 @@ export function extractPromptCandidates(message: string): PromptCandidate[] {
 
     const heading = titleForTier(line, tier);
     if (heading) {
-      flush();
+      // The previous block ends where this title begins.
+      flush(index);
       title = heading;
+      titleLine = index;
       continue;
     }
 
     if (title) body.push(line);
   }
 
-  flush();
+  flush(lines.length);
   return candidates;
 }
 
@@ -184,6 +200,8 @@ export type PromptOffer = {
   id: string;
   title: string;
   summary: string;
+  /** Line index of the bullet this offer came from. */
+  line: number;
 };
 
 /** "- **Design System Starter**: output a minimal design system." */
@@ -195,8 +213,10 @@ export function extractPromptOffers(message: string): PromptOffer[] {
 
   const offers: PromptOffer[] = [];
   let inFence = false;
+  const lines = message.split("\n");
 
-  for (const line of message.split("\n")) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     if (line.trim().startsWith("```")) {
       inFence = !inFence;
       continue;
@@ -214,9 +234,78 @@ export function extractPromptOffers(message: string): PromptOffer[] {
     if (title.split(/\s+/).length > 8) continue;
     if (summary.length < 10 || summary.length > 220) continue;
 
-    offers.push({ id: `o${offers.length}`, title, summary });
+    offers.push({ id: `o${offers.length}`, title, summary, line: index });
   }
 
   // One bullet is not a menu.
   return offers.length >= 2 ? offers : [];
+}
+
+/* ------------------------------------------------------------------ *
+ * Rendering a reply as interactive segments
+ * ------------------------------------------------------------------ */
+
+/**
+ * A reply, broken into what the UI should draw. Controls sit *inside* the
+ * message at the position the item appeared, rather than in a panel below it —
+ * so the tick box is attached to the thing it refers to.
+ */
+export type ReplySegment =
+  | { kind: "text"; key: string; text: string }
+  | { kind: "prompt"; key: string; candidate: PromptCandidate; body: string }
+  | { kind: "offer"; key: string; offer: PromptOffer };
+
+export function segmentReply(message: string): ReplySegment[] {
+  const lines = message.split("\n");
+  const candidates = extractPromptCandidates(message);
+  // A reply is one or the other: written-out prompts, or a menu of ideas.
+  const offers = candidates.length > 0 ? [] : extractPromptOffers(message);
+
+  if (candidates.length === 0 && offers.length === 0) {
+    return message.trim()
+      ? [{ kind: "text", key: "t0", text: message }]
+      : [];
+  }
+
+  const promptByLine = new Map(candidates.map((c) => [c.titleLine, c]));
+  const offerByLine = new Map(offers.map((o) => [o.line, o]));
+
+  const segments: ReplySegment[] = [];
+  let buffer: string[] = [];
+
+  const flushText = () => {
+    const text = buffer.join("\n").trim();
+    if (text) {
+      segments.push({ kind: "text", key: `t${segments.length}`, text });
+    }
+    buffer = [];
+  };
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const candidate = promptByLine.get(index);
+    if (candidate) {
+      flushText();
+      segments.push({
+        kind: "prompt",
+        key: `p${candidate.id}`,
+        candidate,
+        body: candidate.content,
+      });
+      // The body is rendered by the prompt segment, so skip those lines.
+      index = candidate.endLine - 1;
+      continue;
+    }
+
+    const offer = offerByLine.get(index);
+    if (offer) {
+      flushText();
+      segments.push({ kind: "offer", key: `o${offer.id}`, offer });
+      continue;
+    }
+
+    buffer.push(lines[index]);
+  }
+
+  flushText();
+  return segments;
 }
