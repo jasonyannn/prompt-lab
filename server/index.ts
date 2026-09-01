@@ -250,7 +250,7 @@ export default {
     if (!(request.headers.get("accept") || "").includes("text/html")) {
       return response;
     }
-    url.pathname = "/";
+    url.pathname = "/index.html";
     return env.ASSETS.fetch(new Request(url, request));
   },
 };
