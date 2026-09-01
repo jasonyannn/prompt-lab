@@ -36,6 +36,7 @@ import {
 } from "./attachments";
 import { knowledgeStore, type KnowledgeItem } from "./knowledgeStore";
 import { categoryStore } from "./categoryStore";
+import { searchProducts } from "./products";
 import {
   catalogPromptTitle,
   catalogSourceId,
@@ -723,6 +724,65 @@ export const PROMPT_TOOLS: ToolDescriptor[] = [
         true
       );
       return ok({ generated: prompts.length, saved: shouldSave, prompts });
+    },
+  },
+
+  /*
+   * WebMCP Challenge: the required generic catalog-search capability.
+   *
+   * The name and description are fixed by the challenge specification and must
+   * not be changed. "Product" maps onto Prompt Lab's reusable resources —
+   * prompts, journeys, prompt packs and agent templates — at this boundary
+   * only; see src/lib/products.ts.
+   */
+  {
+    name: "search_products",
+    description: "Search the product catalog",
+    annotations: { readOnlyHint: true },
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: {
+          type: "string",
+          description:
+            "Keywords to match against a resource's name, description, category, tags and prompt text.",
+        },
+        category: {
+          type: "string",
+          description:
+            'Restrict results to one category, e.g. "Career", "Travel" or "Prompt pack".',
+        },
+        limit: {
+          type: "number",
+          description: "Maximum results to return, 1–50. Defaults to 20.",
+        },
+      },
+    },
+    execute: (input) => {
+      const query = str(input, "query");
+      const category = str(input, "category");
+      const limit = num(input, "limit");
+
+      try {
+        const result = searchProducts({ query, category, limit });
+        logActivity(
+          "search_products",
+          // Only the search parameters are logged — never result contents.
+          { query: query ?? "", category: category ?? "", limit: limit ?? null },
+          `Query: ${query ?? "(all)"} | Results: ${result.count} | Status: success`,
+          true
+        );
+        return ok(result);
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : String(error);
+        logActivity(
+          "search_products",
+          { query: query ?? "", category: category ?? "", limit: limit ?? null },
+          `Query: ${query ?? "(all)"} | Results: 0 | Status: error`,
+          false
+        );
+        return fail(`Product search failed: ${detail}`);
+      }
     },
   },
 
