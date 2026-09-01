@@ -3090,7 +3090,45 @@ select {
 }
 
 .profile-head {
-  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.profile-kicker {
+  color: var(--text-faint);
+  font-size: 9.5px;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.profile-edit {
+  flex-basis: 100%;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-soft);
+}
+
+.profile-edit-note {
+  margin: 2px 0 9px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+}
+
+.profile-edit-row {
+  display: flex;
+  gap: 7px;
+}
+
+.profile-edit-row .input {
+  flex: 1;
+  max-width: 320px;
+}
+
+.profile-section-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  letter-spacing: -0.01em;
 }
 
 .profile-card {
