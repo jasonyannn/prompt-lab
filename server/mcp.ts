@@ -1,6 +1,13 @@
 import { McpServer, type CallToolResult, type JSONValue } from "@modelcontextprotocol/server";
 import * as z from "zod/v4";
 import {
+  collectCatalogRecords,
+} from "../src/lib/catalogProducts";
+import {
+  searchProductRecords,
+  type ProductRecord,
+} from "../src/lib/productSearch";
+import {
   createAgent,
   createPrompt,
   deletePrompt,
@@ -13,6 +20,7 @@ import {
   setPromptRating,
   updateAgent,
   updatePrompt,
+  type AgentRecord,
   type PromptRecord,
   type PromptVersionRecord,
 } from "./database";
@@ -95,6 +103,48 @@ function promptSummary(prompt: PromptRecord) {
   };
 }
 
+function remoteProductRecords(
+  prompts: PromptRecord[],
+  agents: AgentRecord[]
+): ProductRecord[] {
+  const promptProducts: ProductRecord[] = prompts.map((prompt) => ({
+    id: prompt.id,
+    name: prompt.title,
+    description: prompt.content.split("\n")[0].slice(0, 160),
+    category: prompt.category,
+    type: "prompt",
+    searchText: [prompt.title, prompt.category, prompt.content]
+      .join(" ")
+      .toLowerCase(),
+    visibility: "public",
+  }));
+  const agentProducts: ProductRecord[] = agents.map((agent) => ({
+    id: agent.id,
+    name: agent.name,
+    description: agent.role,
+    category: agent.defaultCategory,
+    type: "agent_template",
+    searchText: [
+      agent.name,
+      agent.role,
+      agent.instructions,
+      agent.defaultCategory,
+    ]
+      .join(" ")
+      .toLowerCase(),
+    visibility: "public",
+  }));
+
+  const records = [...collectCatalogRecords(), ...promptProducts, ...agentProducts];
+  const seen = new Set<string>();
+  return records.filter((record) => {
+    const key = `${record.type}:${record.id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 function fillVariables(
   content: string,
   variables: Record<string, string>
@@ -147,6 +197,7 @@ function findVersion(
 }
 
 export const REMOTE_TOOL_NAMES = [
+  "search_products",
   "list_agents",
   "create_agent",
   "update_agent",
@@ -171,6 +222,57 @@ export function createPromptLabMcpServer(db: D1Database) {
       instructions:
         "Prompt Lab is a shared intelligent prompt library. Search before creating duplicates. Preserve useful prompts by creating versions or variants, and confirm with the user before destructive calls.",
     }
+  );
+
+  server.registerTool(
+    "search_products",
+    {
+      title: "Search the product catalog",
+      description: "Search the product catalog",
+      inputSchema: z.object({
+        query: z
+          .string()
+          .trim()
+          .optional()
+          .describe(
+            "Keywords to match against a resource's name, description, category, tags and prompt text."
+          ),
+        category: z
+          .string()
+          .trim()
+          .optional()
+          .describe(
+            'Restrict results to one category, e.g. "Career", "Travel" or "Prompt pack".'
+          ),
+        limit: z
+          .number()
+          .int()
+          .min(1)
+          .max(50)
+          .optional()
+          .describe("Maximum results to return, 1–50. Defaults to 20."),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async (input) =>
+      runTool(db, "search_products", input, async () => {
+        const [prompts, agents] = await Promise.all([
+          searchPrompts(db, { limit: 100 }),
+          listAgents(db),
+        ]);
+        const result = searchProductRecords(
+          {
+            query: input.query,
+            category: input.category,
+            limit: input.limit,
+          },
+          remoteProductRecords(prompts, agents)
+        );
+        return {
+          payload: result,
+          summary: `${result.count} product${result.count === 1 ? "" : "s"} found`,
+        };
+      })
   );
 
   server.registerTool(
