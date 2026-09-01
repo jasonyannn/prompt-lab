@@ -1,3 +1,17 @@
+/** "private" is only meaningful for a signed-in author; see docs/security.md. */
+export type PostVisibility = "public" | "unlisted" | "private";
+
+/** A forum author, with the counts shown on their profile. */
+export type AuthorProfile = {
+  id: string;
+  display_name: string | null;
+  avatar_url?: string | null;
+  created_at: string | null;
+  public_post_count: number;
+  /** Only populated when viewing your own profile. */
+  private_post_count?: number;
+};
+
 export type ForumPost = {
   id: string;
   author_id: string | null;
@@ -5,7 +19,7 @@ export type ForumPost = {
   content: string;
   category: string;
   tags: string[];
-  visibility: "public" | "unlisted";
+  visibility: PostVisibility;
   status: "draft" | "published" | "flagged" | "removed";
   rating: number | null;
   usage_count: number;
@@ -23,6 +37,6 @@ export type ForumInsert = {
   content: string;
   category?: string;
   tags?: string[];
-  visibility?: "public" | "unlisted";
+  visibility?: PostVisibility;
   anonymous?: boolean;
 };
