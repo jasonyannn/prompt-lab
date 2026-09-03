@@ -1,6 +1,10 @@
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { ensureDatabase, listRemoteActivity } from "./database";
-import { createPromptLabMcpServer, REMOTE_TOOL_NAMES } from "./mcp";
+import {
+  createPromptLabMcpServer,
+  createPromptLabMcpServerOnly,
+  REMOTE_TOOL_NAMES,
+} from "./mcp";
 import {
   chatWithModel,
   DEFAULT_EFFORT,
@@ -93,7 +97,7 @@ async function handleMcp(request: Request, env: Env) {
   }
 
   const handler = createMcpHandler(
-    () => createPromptLabMcpServer(env.DB),
+    () => createPromptLabMcpServerOnly(env.DB),
     {
       legacy: "stateless",
       onerror: (error) => console.error("[remote-mcp]", error),
@@ -114,6 +118,7 @@ async function handleApi(request: Request, env: Env, pathname: string) {
 
   if (pathname === "/api/mcp/status") {
     const origin = new URL(request.url).origin;
+    const { promptCounts } = await createPromptLabMcpServer(env.DB);
     return json({
       ready: true,
       name: "Prompt Lab",
@@ -126,6 +131,10 @@ async function handleApi(request: Request, env: Env, pathname: string) {
       authentication: "none — shared hackathon demo library",
       toolCount: REMOTE_TOOL_NAMES.length,
       tools: REMOTE_TOOL_NAMES,
+      // Saved prompts and the catalog are also served as MCP prompts, so a
+      // client lists them as commands rather than having to call a tool.
+      promptCount: promptCounts.total,
+      prompts: promptCounts,
     });
   }
 
