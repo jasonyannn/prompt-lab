@@ -105,7 +105,7 @@ library from the catalog. New users currently land on Discover with no guidance.
 
 Two surfaces, deliberately different.
 
-### Browser WebMCP — 28 tools
+### Browser WebMCP — 50 tools
 
 Registered on `document.modelContext`. Operates on the **device-local** library:
 `localStorage` prompts, IndexedDB knowledge files, and the active attachments in
@@ -115,11 +115,23 @@ Covers the full catalog surface too — `search_catalog`, `browse_catalog`,
 `get_catalog_prompt`, `save_catalog_prompt`, `start_journey` — so an agent can
 answer "what should I ask about starting a store?" without the user browsing.
 
-### Remote MCP — 15 tools
+### Remote MCP — 17 tools, plus prompts
 
 Streamable HTTP at `/mcp`, backed by Cloudflare D1. Works with no browser tab
 open. Supports the full prompt lifecycle including **version history, variants
 and diffs**, which the local library does not.
+
+It also serves the library through the MCP **prompts** primitive, not only
+through tools. `prompts/list` returns the saved remote library followed by the
+public catalog, and `prompts/get` renders one with its `{{placeholders}}`
+supplied as arguments. A client that supports prompts therefore shows the whole
+library in its own command menu without calling a tool at all — see
+`server/mcp.ts` and the shared naming and argument logic in
+`src/lib/mcpPrompts.ts`.
+
+`export_prompt` re-renders a saved prompt for somewhere else entirely: a
+`.prompt.md` file, a Cursor rule, a Claude skill, its structured JSON spec, or
+an MCP prompt definition.
 
 Connecting: point any MCP client that supports remote servers at
 `https://<site>/mcp`. VS Code, Claude and Codex all do. Jira is the exception —
@@ -154,6 +166,14 @@ Worth adding:
 
 Ordered by value against effort, from an engineering point of view.
 
+0. ~~**Prompts as strings rather than specs.**~~ Done. `src/lib/promptSpec.ts`
+   parses a prompt back into its parts — role, objective, context, guardrails,
+   process, output — and renders them again. It is a *lens* over the stored
+   text rather than a second stored field, so nothing was migrated and
+   `content` stays the source of truth. It round-trips exactly for every
+   catalog prompt and every role variant. Evaluation now scores real sections
+   instead of matching keywords, diffs report which section moved, and export
+   targets are re-renderings rather than copies.
 1. **Local version history.** The single worst asymmetry in the app. Editing a
    prompt in the browser overwrites it silently, while the remote library keeps
    every version. The D1 schema is a working design to copy.

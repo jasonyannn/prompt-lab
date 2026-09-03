@@ -45,8 +45,11 @@ comes *before* "how do I write this prompt?" — namely, "what could I even ask?
 | Predictive prompts: what you are likely to ask next | `src/lib/predictivePrompts.ts` |
 | In-app agent: hosted gpt-5.2, or local Ollama for testing | `src/lib/chatgpt.ts`, `src/lib/ollama.ts` |
 | Saved conversations, multiple chats | `src/lib/conversationStore.ts` |
-| 28 browser tools over WebMCP | `src/lib/webmcp.ts` |
-| 15 remote tools over MCP, backed by Cloudflare D1 | `server/mcp.ts` |
+| 50 browser tools over WebMCP | `src/lib/webmcp.ts` |
+| 17 remote tools over MCP, backed by Cloudflare D1 | `server/mcp.ts` |
+| The library served as MCP *prompts*, so clients list it as commands | `server/mcp.ts`, `src/lib/mcpPrompts.ts` |
+| Structured prompt spec parsed back out of stored text | `src/lib/promptSpec.ts` |
+| Export to `.prompt.md`, Cursor rules, Claude skills, JSON spec | `src/lib/mcpPrompts.ts` |
 | Community forum: sign-in, posts and likes, on Supabase | `src/components/Forum.tsx` |
 | Version history, variants and diffs — **remote only** | `db/schema.ts` |
 
@@ -105,6 +108,8 @@ Honest list, expanded in `agent.md` and `design.md`:
 - **No accounts.** The remote library is a single shared unauthenticated space,
   which blocks per-user libraries, teams and billing.
 - **`Test · N` does not run anything.** It is a static heuristic score, not a
-  real execution against a model.
+  real execution against a model. It is now computed from the parsed prompt
+  spec rather than from keyword matching, so it reports which sections are
+  missing — but it still does not call a model.
 - **Journeys do not track progress.** You can save all twelve steps but nothing
   records which you have completed.
