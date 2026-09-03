@@ -1,4 +1,23 @@
+/**
+ * Scores a prompt against the shape the catalog holds every prompt to.
+ *
+ * This used to reverse-engineer structure with regexes over the raw text —
+ * `/\b(act as|role|you are)\b/` for a role, `content.length >= 120` for
+ * clarity. It now reads the parsed spec, so "no output format" means the
+ * section is genuinely absent rather than that a keyword was missing, and the
+ * recommendations can name the section to add.
+ */
+
 import { extractVariables, renderPrompt } from "./variables";
+import {
+  missingCoreSections,
+  parseSpec,
+  presentSections,
+  SECTION_LABELS,
+  structureScore,
+  type PromptSpec,
+  type SpecSectionKey,
+} from "./promptSpec";
 
 export type EvaluationCriterion = {
   key: "clarity" | "specificity" | "safety" | "completeness" | "consistency";
@@ -13,6 +32,13 @@ export type PromptEvaluation = {
   criteria: EvaluationCriterion[];
   strengths: string[];
   recommendations: string[];
+  /** The parsed structure the score was derived from. */
+  spec: PromptSpec;
+  structure: {
+    score: number;
+    present: SpecSectionKey[];
+    missing: SpecSectionKey[];
+  };
   test: {
     variableCount: number;
     filledVariables: string[];
@@ -32,18 +58,6 @@ function clamp(value: number) {
   return Math.max(0, Math.min(100, Math.round(value)));
 }
 
-function extractExpectedSections(content: string) {
-  const marker = content.match(
-    /(?:return exactly|output format|include(?: the following)?|provide(?: the following)?)[^\n]*\n([\s\S]*?)(?:\n\n|$)/i
-  );
-  if (!marker?.[1]) return [];
-  return marker[1]
-    .split("\n")
-    .map((line) => line.replace(/^\s*(?:[-*•]|\d+[.)])\s*/, "").trim())
-    .filter((line) => line.length >= 3)
-    .slice(0, 12);
-}
-
 function criterion(
   key: EvaluationCriterion["key"],
   label: string,
@@ -59,41 +73,52 @@ export function evaluatePrompt(
   sampleOutput = ""
 ): PromptEvaluation {
   const lower = content.toLowerCase();
+  const spec = parseSpec(content);
   const variables = extractVariables(content);
   const filledVariables = variables.filter((name) => values[name]?.trim());
   const missingVariables = variables.filter((name) => !values[name]?.trim());
-  const expectedSections = extractExpectedSections(content);
+
+  // The output section *is* the list of sections the answer must contain.
+  const expectedSections = spec.output;
+  const present = presentSections(spec);
+  const missing = missingCoreSections(spec);
 
   const clarityScore =
-    35 +
-    (has(lower, /\b(objective|goal|task|create|analyse|analyze|design|write)\b/) ? 30 : 0) +
-    (content.length >= 120 ? 20 : 0) +
-    (content.length <= 8_000 ? 15 : 0);
+    (spec.objective ? 45 : 0) +
+    (spec.role ? 25 : 0) +
+    (spec.objective && spec.objective.length <= 400 ? 15 : 0) +
+    (spec.preamble && present.length === 0 ? 20 : 0) +
+    (content.length >= 80 ? 15 : 0);
 
   const specificityScore =
-    25 +
-    (has(lower, /\b(context|audience|users?|platform|constraints?|inputs?|source material|provided|interface)\b/) ? 30 : 0) +
-    (variables.length > 0 ? 25 : 0) +
-    (has(content, /(?:^|\n)\s*(?:[-*•]|\d+[.)])\s+/m) ? 20 : 0);
+    20 +
+    Math.min(30, spec.context.length * 10) +
+    Math.min(20, variables.length * 7) +
+    (spec.process.length >= 3 ? 20 : spec.process.length > 0 ? 10 : 0) +
+    (spec.specialisation ? 10 : 0);
 
   const safetyScore =
-    50 +
-    (has(lower, /\b(do not|never|avoid|must not)\b/) ? 25 : 0) +
-    (has(lower, /\b(assumptions?|uncertain|unknown|missing information)\b/) ? 15 : 0) +
-    (has(lower, /\b(untrusted|source|evidence|invent|privacy|sensitive)\b/) ? 10 : 0);
+    30 +
+    (spec.guardrails ? 30 : 0) +
+    (spec.constraints.length > 0 ? 15 : 0) +
+    (has(lower, /\b(do not|never|avoid|must not)\b/) ? 10 : 0) +
+    (has(lower, /\b(assumptions?|uncertain|unknown|missing information)\b/)
+      ? 10
+      : 0) +
+    (has(lower, /\b(untrusted|source|evidence|invent|privacy|sensitive)\b/)
+      ? 5
+      : 0);
 
-  const completenessScore =
-    10 +
-    (has(lower, /\b(act as|role|you are)\b/) ? 20 : 0) +
-    (has(lower, /\b(context|background|known)\b/) ? 20 : 0) +
-    (has(lower, /\b(process|steps?|first|then)\b/) || has(content, /(?:^|\n)\s*(?:[-*•]|\d+[.)])\s+/m) ? 25 : 0) +
-    (has(lower, /\b(return|output|format|deliverable|provide)\b/) ? 25 : 0);
+  const completenessScore = structureScore(spec);
 
   let consistencyScore =
-    20 +
-    (expectedSections.length > 0 ? 45 : 0) +
-    (has(lower, /\b(exactly|schema|table|json|markdown|numbered|checklist)\b/) ? 20 : 0) +
-    (has(lower, /\b(concise|length|words?|characters?|items?)\b/) ? 15 : 0);
+    15 +
+    (spec.output.length > 0 ? 45 : 0) +
+    (spec.output.length >= 3 ? 15 : 0) +
+    (has(lower, /\b(exactly|schema|table|json|markdown|numbered|checklist)\b/)
+      ? 15
+      : 0) +
+    (has(lower, /\b(concise|length|words?|characters?|items?)\b/) ? 10 : 0);
 
   let sampleOutputCoverage: number | undefined;
   let missingOutputSections: string[] | undefined;
@@ -105,20 +130,50 @@ export function evaluatePrompt(
         .split(/\s+/)
         .filter((word) => word.length > 3)
         .slice(0, 3);
-      return keywords.length > 0 && !keywords.some((word) => sampleOutput.toLowerCase().includes(word));
+      return (
+        keywords.length > 0 &&
+        !keywords.some((word) => sampleOutput.toLowerCase().includes(word))
+      );
     });
     sampleOutputCoverage = Math.round(
-      ((expectedSections.length - missingOutputSections.length) / expectedSections.length) * 100
+      ((expectedSections.length - missingOutputSections.length) /
+        expectedSections.length) *
+        100
     );
     consistencyScore = Math.round((consistencyScore + sampleOutputCoverage) / 2);
   }
 
   const criteria = [
-    criterion("clarity", "Clarity", clarityScore, "A direct task and understandable objective."),
-    criterion("specificity", "Specificity", specificityScore, "Useful context, inputs and concrete constraints."),
-    criterion("safety", "Safety", safetyScore, "Boundaries for uncertainty, evidence and untrusted material."),
-    criterion("completeness", "Completeness", completenessScore, "Role, context, process and deliverable coverage."),
-    criterion("consistency", "Output consistency", consistencyScore, "A repeatable and testable response structure."),
+    criterion(
+      "clarity",
+      "Clarity",
+      clarityScore,
+      "A stated role and one explicit objective."
+    ),
+    criterion(
+      "specificity",
+      "Specificity",
+      specificityScore,
+      "Named context fields, variables and concrete steps."
+    ),
+    criterion(
+      "safety",
+      "Safety",
+      safetyScore,
+      "Boundaries for uncertainty, evidence and untrusted material."
+    ),
+    criterion(
+      "completeness",
+      "Completeness",
+      completenessScore,
+      "Role, objective, context, process and output all present."
+    ),
+    criterion(
+      "consistency",
+      "Output consistency",
+      consistencyScore,
+      "A repeatable and testable response structure."
+    ),
   ];
   const score = clamp(
     criteria.reduce((sum, item) => sum + item.score, 0) / criteria.length
@@ -127,14 +182,60 @@ export function evaluatePrompt(
   const strengths = criteria
     .filter((item) => item.score >= 80)
     .map((item) => `${item.label}: ${item.detail}`);
+
   const recommendations: string[] = [];
-  if (clarityScore < 80) recommendations.push("State one explicit objective using a concrete action verb.");
-  if (specificityScore < 80) recommendations.push("Add audience, available inputs, constraints, and variables for changing context.");
-  if (safetyScore < 80) recommendations.push("Tell the model how to handle uncertainty, unsupported claims, and untrusted source material.");
-  if (completenessScore < 80) recommendations.push("Specify the role, known context, process, and required deliverable.");
-  if (consistencyScore < 80) recommendations.push("Define an exact output format with named sections or a schema.");
-  if (missingVariables.length > 0) recommendations.push(`Fill ${missingVariables.length} test variable${missingVariables.length === 1 ? "" : "s"} before running the prompt.`);
-  if (missingOutputSections?.length) recommendations.push(`The sample output appears to miss: ${missingOutputSections.join(", ")}.`);
+  // Naming the absent section beats "add more specificity".
+  for (const section of missing) {
+    switch (section) {
+      case "role":
+        recommendations.push(
+          'Open with "Act as …" so the model adopts a specific expert role.'
+        );
+        break;
+      case "objective":
+        recommendations.push(
+          'Add an "Objective" section stating the one outcome you want.'
+        );
+        break;
+      case "context":
+        recommendations.push(
+          'Add a "Context I am giving you" section listing each input as "Label: {{placeholder}}".'
+        );
+        break;
+      case "process":
+        recommendations.push(
+          'Add a "Process" section with the steps to work through in order.'
+        );
+        break;
+      case "output":
+        recommendations.push(
+          'Add a "Return exactly" section naming every part the answer must contain.'
+        );
+        break;
+      default:
+        recommendations.push(`Add a ${SECTION_LABELS[section]} section.`);
+    }
+  }
+  if (!spec.guardrails && missing.length < 3) {
+    recommendations.push(
+      'Add a "Before you begin" section telling the model how to handle missing detail and unverified claims.'
+    );
+  }
+  if (spec.preamble && present.length > 0) {
+    recommendations.push(
+      "Some text sits outside any section — fold it into the objective or the context so the structure covers the whole prompt."
+    );
+  }
+  if (missingVariables.length > 0) {
+    recommendations.push(
+      `Fill ${missingVariables.length} test variable${missingVariables.length === 1 ? "" : "s"} before running the prompt.`
+    );
+  }
+  if (missingOutputSections?.length) {
+    recommendations.push(
+      `The sample output appears to miss: ${missingOutputSections.join(", ")}.`
+    );
+  }
 
   return {
     score,
@@ -142,6 +243,8 @@ export function evaluatePrompt(
     criteria,
     strengths,
     recommendations,
+    spec,
+    structure: { score: completenessScore, present, missing },
     test: {
       variableCount: variables.length,
       filledVariables,

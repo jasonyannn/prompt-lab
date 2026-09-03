@@ -4,6 +4,22 @@ import {
   collectCatalogRecords,
 } from "../src/lib/catalogProducts";
 import {
+  getPrompts as getCatalogPrompts,
+  placeholderFor,
+  renderCatalogPrompt,
+} from "../src/lib/catalog";
+import {
+  compilePrompt,
+  fillFromArguments,
+  promptArguments,
+  promptDescription,
+  promptSlug,
+  EXPORT_TARGETS,
+  type ExportTarget,
+  type PromptArgumentSpec,
+} from "../src/lib/mcpPrompts";
+import { diffPromptContent } from "../src/lib/promptSpec";
+import {
   searchProductRecords,
   type ProductRecord,
 } from "../src/lib/productSearch";
@@ -212,15 +228,125 @@ export const REMOTE_TOOL_NAMES = [
   "rate_prompt",
   "record_prompt_use",
   "render_prompt",
+  "export_prompt",
   "delete_prompt",
 ] as const;
 
-export function createPromptLabMcpServer(db: D1Database) {
+/**
+ * How many prompts are offered through `prompts/list`.
+ *
+ * The saved library comes first because it is the user's own material; the
+ * public catalog fills the rest so a client connecting to a fresh deployment
+ * still sees something worth running.
+ */
+const MAX_LIBRARY_PROMPTS = 100;
+const MAX_CATALOG_PROMPTS = 120;
+
+/**
+ * Registers one MCP prompt.
+ *
+ * `load` is deferred so listing prompts costs a name and a description each —
+ * the prompt body is only built when a client actually asks for it.
+ */
+function registerLibraryPrompt(
+  server: McpServer,
+  options: {
+    name: string;
+    title: string;
+    description: string;
+    args: PromptArgumentSpec[];
+    source: "library" | "catalog";
+    sourceId: string;
+    load: () => Promise<string> | string;
+  }
+) {
+  const shape: z.ZodRawShape = {};
+  for (const argument of options.args) {
+    shape[argument.name] = z
+      .string()
+      .optional()
+      .describe(argument.description);
+  }
+
+  server.registerPrompt(
+    options.name,
+    {
+      title: options.title,
+      description: options.description,
+      argsSchema: z.object(shape),
+      _meta: { source: options.source, sourceId: options.sourceId },
+    },
+    async (args: Record<string, unknown>) => {
+      const content = await options.load();
+      const filled = fillFromArguments(content, options.args, args ?? {});
+      return {
+        messages: [
+          {
+            role: "user" as const,
+            content: { type: "text" as const, text: filled.text },
+          },
+        ],
+      };
+    }
+  );
+}
+
+/** The saved remote library, newest first. */
+async function registerLibraryPrompts(
+  server: McpServer,
+  db: D1Database,
+  taken: Set<string>
+): Promise<number> {
+  const prompts = await searchPrompts(db, { limit: MAX_LIBRARY_PROMPTS });
+  for (const prompt of prompts) {
+    registerLibraryPrompt(server, {
+      name: promptSlug(prompt.title, taken),
+      title: prompt.title,
+      description: `${prompt.category} · ${promptDescription(prompt.content)}`,
+      args: promptArguments(prompt.content),
+      source: "library",
+      sourceId: prompt.id,
+      load: () => prompt.content,
+    });
+  }
+  return prompts.length;
+}
+
+/**
+ * The public catalog.
+ *
+ * Names, descriptions and arguments all come from the catalog spec directly, so
+ * listing does not have to render 120 prompt bodies on every request.
+ */
+function registerCatalogPrompts(server: McpServer, taken: Set<string>): number {
+  const specs = getCatalogPrompts().slice(0, MAX_CATALOG_PROMPTS);
+  for (const spec of specs) {
+    const args: PromptArgumentSpec[] = spec.inputs.map((label) => ({
+      name: placeholderFor(label).replace(/[^a-z0-9]+/g, "_"),
+      variable: placeholderFor(label),
+      description: `${label}.`,
+      required: false,
+    }));
+
+    registerLibraryPrompt(server, {
+      name: promptSlug(spec.title, taken),
+      title: spec.title,
+      description: spec.summary,
+      args,
+      source: "catalog",
+      sourceId: spec.id,
+      load: () => renderCatalogPrompt(spec),
+    });
+  }
+  return specs.length;
+}
+
+export async function createPromptLabMcpServer(db: D1Database) {
   const server = new McpServer(
-    { name: "prompt-lab", version: "0.2.0" },
+    { name: "prompt-lab", version: "0.3.0" },
     {
       instructions:
-        "Prompt Lab is a shared intelligent prompt library. Search before creating duplicates. Preserve useful prompts by creating versions or variants, and confirm with the user before destructive calls.",
+        "Prompt Lab is a shared intelligent prompt library. Search before creating duplicates. Preserve useful prompts by creating versions or variants, and confirm with the user before destructive calls. Saved prompts and the public catalog are also offered as MCP prompts, so prefer selecting one over writing a prompt from scratch.",
     }
   );
 
@@ -557,7 +683,7 @@ export function createPromptLabMcpServer(db: D1Database) {
     {
       title: "Compare prompt versions",
       description:
-        "Compare two saved versions of the same prompt and return their metadata plus a bounded line-by-line difference.",
+        "Compare two saved versions of the same prompt. Returns their metadata, a section-by-section difference naming which parts of the prompt changed, and a bounded line-by-line difference.",
       inputSchema: z.object({
         id: z.string().trim().min(1),
         from_version: z.number().int().min(1),
@@ -574,9 +700,12 @@ export function createPromptLabMcpServer(db: D1Database) {
         const from = findVersion(history, input.from_version);
         const to = findVersion(history, input.to_version);
         const difference = lineDiff(from.content, to.content);
+        // Which sections moved is the useful answer; the line diff is the
+        // fallback for prompts that carry no recognisable structure.
+        const sections = diffPromptContent(from.content, to.content);
         return {
-          payload: { from, to, difference },
-          summary: `Compared v${from.versionNumber} with v${to.versionNumber}`,
+          payload: { from, to, sectionDifference: sections, difference },
+          summary: `Compared v${from.versionNumber} with v${to.versionNumber} — ${sections.changedSections} section${sections.changedSections === 1 ? "" : "s"} changed`,
         };
       })
   );
@@ -669,5 +798,71 @@ export function createPromptLabMcpServer(db: D1Database) {
       })
   );
 
-  return server;
+  server.registerTool(
+    "export_prompt",
+    {
+      title: "Export a prompt",
+      description:
+        "Re-render a saved prompt for use outside Prompt Lab — as a .prompt.md file, a Cursor rule, a Claude skill, its structured JSON spec, or an MCP prompt definition. Returns a suggested filename and the file body.",
+      inputSchema: z.object({
+        id: z.string().trim().min(1),
+        target: z
+          .enum(
+            EXPORT_TARGETS.map((entry) => entry.id) as [
+              ExportTarget,
+              ...ExportTarget[],
+            ]
+          )
+          .describe(
+            EXPORT_TARGETS.map((entry) => `${entry.id}: ${entry.label}`).join(
+              "; "
+            )
+          ),
+      }),
+      annotations: { readOnlyHint: true },
+    },
+    async (input) =>
+      runTool(db, "export_prompt", input, async () => {
+        const prompt = await getPrompt(db, input.id);
+        if (!prompt) throw new Error(`No prompt found with id "${input.id}".`);
+        const file = compilePrompt(
+          {
+            title: prompt.title,
+            content: prompt.content,
+            category: prompt.category,
+          },
+          input.target
+        );
+        return {
+          payload: { target: input.target, ...file },
+          summary: `Exported "${prompt.title}" as ${input.target}`,
+        };
+      })
+  );
+
+  // Prompts, not just tools. An MCP client lists these in its own command menu,
+  // which is how the library reaches someone who never opens this site.
+  const taken = new Set<string>();
+  let libraryPromptCount = 0;
+  try {
+    libraryPromptCount = await registerLibraryPrompts(server, db, taken);
+  } catch (error) {
+    // A prompt-listing failure must not take the tool surface down with it.
+    console.error("[remote-mcp] library prompts unavailable", error);
+  }
+  const catalogPromptCount = registerCatalogPrompts(server, taken);
+
+  return {
+    server,
+    promptCounts: {
+      library: libraryPromptCount,
+      catalog: catalogPromptCount,
+      total: libraryPromptCount + catalogPromptCount,
+    },
+  };
+}
+
+/** The handler only needs the server; the counts are for the status endpoint. */
+export async function createPromptLabMcpServerOnly(db: D1Database) {
+  return (await createPromptLabMcpServer(db)).server;
 }
