@@ -1426,6 +1426,61 @@ const RAW_PROMPT_TOOLS: ToolDescriptor[] = [
   },
 
   {
+    name: "export_prompt",
+    description:
+      "Re-render a saved prompt for use outside Prompt Lab — as a .prompt.md file, a Cursor rule, a Claude skill, its structured JSON spec, or an MCP prompt definition. Returns a suggested filename and the file body for the agent to write.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "Prompt id from search_prompts." },
+        target: {
+          type: "string",
+          enum: EXPORT_TARGETS.map((entry) => entry.id),
+          description: EXPORT_TARGETS.map(
+            (entry) => `${entry.id}: ${entry.label}`
+          ).join("; "),
+        },
+      },
+      required: ["id", "target"],
+    },
+    execute: (input) => {
+      const id = str(input, "id");
+      const prompt = id ? promptStore.get(id) : undefined;
+      if (!id || !prompt) {
+        logActivity("export_prompt", input, "Prompt not found", false);
+        return fail("Prompt not found. Call `search_prompts` and use a valid id.");
+      }
+      const requested = str(input, "target") ?? "markdown";
+      const target = EXPORT_TARGETS.find((entry) => entry.id === requested);
+      if (!target) {
+        logActivity("export_prompt", input, `Unknown target "${requested}"`, false);
+        return fail(
+          `Unknown target "${requested}". Choose one of: ${EXPORT_TARGETS.map((entry) => entry.id).join(", ")}.`
+        );
+      }
+      const file = compilePrompt(
+        {
+          title: prompt.title,
+          content: prompt.content,
+          category: prompt.category,
+        },
+        target.id
+      );
+      logActivity(
+        "export_prompt",
+        input,
+        `Exported "${prompt.title}" as ${target.id}`,
+        true
+      );
+      return ok({
+        prompt: { id: prompt.id, title: prompt.title },
+        target: target.id,
+        ...file,
+      });
+    },
+  },
+
+  {
     name: "create_prompt",
     description:
       "Save a new reusable prompt into the Prompt Lab library. Use this when the user has written or refined a prompt worth keeping.",

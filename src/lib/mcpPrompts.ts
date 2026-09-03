@@ -137,12 +137,12 @@ export function promptDescription(
   content: string,
   spec: PromptSpec = parseSpec(content)
 ): string {
-  const source =
-    spec.objective ??
-    spec.preamble ??
-    content.split("\n").find((line) => line.trim()) ??
-    "";
-  const line = source.replace(/\s+/g, " ").trim();
+  const source = spec.objective ?? spec.preamble ?? content;
+  // A command menu shows one line, so take the first rather than flattening a
+  // whole paragraph into it.
+  const line = (source.split("\n").find((entry) => entry.trim()) ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
   return line.length > 180 ? `${line.slice(0, 179)}…` : line;
 }
 
