@@ -50,7 +50,8 @@ spending liability, not a feature.
 **Severity: medium for a hackathon, high for real users. Documented, not
 accidental.**
 
-`/mcp` exposes 15 tools against one Cloudflare D1 database with no accounts.
+`/mcp` exposes 17 tools and the whole prompt library against one Cloudflare D1
+database with no accounts.
 Every connected client reads and writes the same library, and `delete_prompt`
 permanently removes a prompt and its version history for everyone.
 
