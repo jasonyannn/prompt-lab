@@ -51,6 +51,7 @@ import {
   searchCatalog,
   type CatalogPromptSpec,
 } from "./catalog";
+import { compilePrompt, EXPORT_TARGETS } from "./mcpPrompts";
 import { detectSignals, predictPrompts } from "./predictivePrompts";
 import { evaluatePrompt } from "./promptEvaluator";
 import { extractVariables, renderPrompt } from "./variables";
