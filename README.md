@@ -45,10 +45,35 @@ agent knowledge remain device-local and are not exposed by the remote server.
 | `create_prompt_version` | Save an explicit new version |
 | `create_prompt_variant` | Branch a prompt into the same family |
 | `get_prompt_history` | Retrieve the full lifecycle of a prompt |
-| `compare_prompt_versions` | Return a bounded line-by-line comparison |
+| `compare_prompt_versions` | Return a section-by-section and line-by-line comparison |
 | `rate_prompt` / `record_prompt_use` | Maintain quality and usage metadata |
 | `render_prompt` | Fill `{{variables}}` and record a use |
+| `export_prompt` | Re-render a prompt as a `.prompt.md`, Cursor rule, Claude skill, JSON spec or MCP prompt definition |
 | `delete_prompt` | Delete a prompt and its history after confirmation |
+
+### Remote prompts
+
+The library is served as MCP **prompts**, not only as tools. A client that
+supports the prompts primitive lists every saved prompt and the public catalog
+in its own command menu, so picking one takes no tool call at all:
+
+```text
+prompts/list   → the saved remote library, then the public catalog
+prompts/get    → the prompt body, with {{placeholders}} filled from arguments
+```
+
+Each prompt's `{{placeholders}}` become its MCP arguments. Where the prompt
+carries a `Context I am giving you` section, the label on each line becomes the
+argument's description, so a client renders "The role you are applying for"
+rather than `the_role_you_are_applying_for`. Unsupplied arguments are left
+visible in the text rather than blanked, matching `render_prompt`.
+
+Prompt names are slugs of the title (`Cover letter — UX Designer` becomes
+`cover-letter-ux-designer`) and are de-duplicated within a connection. Listing
+is cheap: names, descriptions and arguments come from stored metadata, and a
+prompt body is only rendered when a client actually asks for it. If the database
+is unreachable the catalog is still served, so the prompt surface degrades
+rather than disappearing.
 
 ## WebMCP
 
@@ -187,6 +212,7 @@ await document.modelContext.registerTool(tool, { signal: controller.signal });
 | `rate_prompt` | Score a prompt 1–5 after use |
 | `record_prompt_use` | Increment usage count when a prompt is actually used |
 | `render_prompt` | Fill a prompt's `{{placeholders}}` and return finished text |
+| `export_prompt` | Re-render a prompt as a `.prompt.md`, Cursor rule, Claude skill, JSON spec or MCP prompt definition |
 | `delete_prompt` | Remove a prompt (marked `destructiveHint`) |
 | `search_forum_posts` | Search the public forum by keyword, category and topic |
 | `list_forum_categories` | List forum categories with counts |
