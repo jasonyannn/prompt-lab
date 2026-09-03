@@ -260,7 +260,7 @@ function registerLibraryPrompt(
     load: () => Promise<string> | string;
   }
 ) {
-  const shape: z.ZodRawShape = {};
+  const shape: Record<string, z.ZodType> = {};
   for (const argument of options.args) {
     shape[argument.name] = z
       .string()
