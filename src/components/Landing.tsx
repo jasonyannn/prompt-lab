@@ -546,7 +546,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
           target="_blank"
           rel="noreferrer"
         >
-          Source (MIT)
+          Source (AGPL-3.0)
         </a>
       </footer>
     </div>

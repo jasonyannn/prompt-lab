@@ -378,5 +378,18 @@ executor are covered.
 
 Copyright © 2026 Jason Yan and Makito Mizushima.
 
-The source code is licensed under the MIT License — see [LICENSE](LICENSE).
+The source code is licensed under the **GNU Affero General Public License v3.0**
+— see [LICENSE](LICENSE).
+
+You may use, modify and redistribute Prompt Lab freely. If you run a modified
+version as a network service, AGPL section 13 requires you to offer the
+complete corresponding source of that version to its users. Prompt Lab
+therefore cannot be taken closed-source and resold as a proprietary hosted
+product.
+
+This project was previously distributed under the MIT License; the change is
+not retroactive for copies already obtained under those terms.
+
+“Prompt Lab” is a trademark of the authors and the licence does not grant
+permission to use it — forks must be distributed under a different name.
 Ownership and trademark details are in [NOTICE.md](NOTICE.md).
