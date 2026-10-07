@@ -29,7 +29,12 @@ jobs:
       - run: npm ci
 
       # Typecheck runs as part of `npm run build`, so a type error fails the deploy.
+      # Vite inlines VITE_* vars at build time; .env.local is gitignored, so
+      # without these the deployed bundle falls back to a placeholder project.
       - run: npm run build
+        env:
+          VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY }}
 
       - uses: actions/configure-pages@v5
 

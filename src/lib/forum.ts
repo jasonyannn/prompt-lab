@@ -21,7 +21,10 @@ export function getPublicProfileName(profile?: { display_name?: string | null } 
 
 function normalizeForumPosts(data: any[] = []): ForumPost[] {
   return data.map((post) => {
-    const total = post.forum_post_like_totals?.[0]?.like_count ?? 0;
+    // post_id is the totals table's primary key, so PostgREST embeds it as a
+    // single object; older schemas returned an array. Accept either.
+    const totals = post.forum_post_like_totals;
+    const total = (Array.isArray(totals) ? totals[0] : totals)?.like_count ?? 0;
     return {
       ...post,
       like_count: total,
@@ -415,64 +418,30 @@ export async function setForumLikeState(postId: string, liked: boolean) {
 
   if (findError) throw findError;
 
-  const { data: current, error: fetchError } = await supabase
+  if (liked && !existingLike) {
+    const { error: insertError } = await supabase
+      .from("forum_post_likes")
+      .insert({ post_id: postId, user_id: user.id });
+    // 23505: a like from another tab landed first, which is the state we want.
+    if (insertError && insertError.code !== "23505") throw insertError;
+  } else if (!liked && existingLike) {
+    const { error: deleteError } = await supabase
+      .from("forum_post_likes")
+      .delete()
+      .eq("id", existingLike.id);
+    if (deleteError) throw deleteError;
+  }
+
+  // forum_post_like_totals is maintained by a trigger on forum_post_likes and
+  // is read-only to clients, so read the count back rather than computing it.
+  const { data: total, error: totalError } = await supabase
     .from("forum_post_like_totals")
     .select("like_count")
     .eq("post_id", postId)
     .maybeSingle();
 
-  if (fetchError) throw fetchError;
-  const currentCount = current?.like_count ?? 0;
-
-  if (liked) {
-    if (existingLike) {
-      return { liked: true, count: currentCount };
-    }
-
-    const { error: insertError } = await supabase
-      .from("forum_post_likes")
-      .insert({ post_id: postId, user_id: user.id });
-
-    if (insertError) throw insertError;
-
-    const nextCount = currentCount + 1;
-    if (current) {
-      const { error: updateError } = await supabase
-        .from("forum_post_like_totals")
-        .update({ like_count: nextCount })
-        .eq("post_id", postId);
-      if (updateError) throw updateError;
-    } else {
-      const { error: insertTotalError } = await supabase
-        .from("forum_post_like_totals")
-        .insert({ post_id: postId, like_count: 1 });
-      if (insertTotalError) throw insertTotalError;
-    }
-
-    return { liked: true, count: nextCount };
-  }
-
-  if (!existingLike) {
-    return { liked: false, count: currentCount };
-  }
-
-  const { error: deleteError } = await supabase
-    .from("forum_post_likes")
-    .delete()
-    .eq("id", existingLike.id);
-
-  if (deleteError) throw deleteError;
-
-  const nextCount = Math.max(0, currentCount - 1);
-  if (current) {
-    const { error: updateError } = await supabase
-      .from("forum_post_like_totals")
-      .update({ like_count: nextCount })
-      .eq("post_id", postId);
-    if (updateError) throw updateError;
-  }
-
-  return { liked: false, count: nextCount };
+  if (totalError) throw totalError;
+  return { liked, count: total?.like_count ?? 0 };
 }
 
 export async function toggleLike(postId: string) {
@@ -493,6 +462,17 @@ export async function toggleLike(postId: string) {
   return setForumLikeState(postId, !existingLike);
 }
 
+/**
+ * supabase-js surfaces network failures (unreachable project, bad URL, offline)
+ * as a bare "Failed to fetch", which reads like a bad password. Say what it is.
+ */
+function describeAuthError(error: { message: string }) {
+  if (/failed to fetch|network ?error|load failed/i.test(error.message)) {
+    return "Couldn't reach the Supabase auth server. Check your connection and that VITE_SUPABASE_URL points to an active project.";
+  }
+  return error.message;
+}
+
 export async function signInWithEmailPassword(email: string, password: string) {
   const trimmedEmail = email.trim();
   const trimmedPassword = password.trim();
@@ -507,7 +487,7 @@ export async function signInWithEmailPassword(email: string, password: string) {
   });
 
   if (error) {
-    throw new Error(`Supabase sign-in failed: ${error.message}`);
+    throw new Error(`Supabase sign-in failed: ${describeAuthError(error)}`);
   }
 
   return data;
@@ -527,7 +507,7 @@ export async function signUpWithEmailPassword(email: string, password: string) {
   });
 
   if (error) {
-    throw new Error(`Supabase sign-up failed: ${error.message}`);
+    throw new Error(`Supabase sign-up failed: ${describeAuthError(error)}`);
   }
 
   return data;
