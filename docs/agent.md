@@ -146,19 +146,25 @@ real users. See `security.md`.
 
 ## 4. Repo agents
 
-Coding agents defined in `.github/agents/`, used while building Prompt Lab.
+Coding agents used while building Prompt Lab. Repository-wide guidance for any
+agent is in `AGENTS.md`; Claude Code also reads `CLAUDE.md`.
 
-Existing: **Reviewer** (regression and risk analysis before merge),
-**Summariser** (repository mapping, focused on changed code).
+**Claude Code** (`.claude/agents/`):
 
-Worth adding:
+| Agent | Use it for |
+|---|---|
+| `code-reviewer` | Correctness and regression review of a diff before merge |
+| `test-writer` | Focused Vitest coverage for new or changed behaviour |
+| `security-auditor` | Anything touching `server/`, Supabase/RLS, secrets or untrusted content |
+| `mcp-contract-guardian` | Adding or changing a WebMCP or remote MCP tool, schema or prompt |
+| `search-quality` | Measuring and tuning the shared ranker in `textSearch.ts` |
 
-- **Test Writer** — the project has no test suite at all. An agent that writes
-  the first behavioural tests around `promptStore`, `catalog` rendering and the
-  chat tool loop would pay for itself.
-- **Accessibility Auditor** — the UI has grown fast: pickers, trays and
-  disclosure panels added without a focus-management pass.
-- **Release Notes** — commit history is the only changelog today.
+**GitHub Copilot** (`.github/agents/`): **Reviewer** (regression and risk
+analysis) and **Summariser** (repository mapping, focused on changed code).
+
+Still worth adding: an **Accessibility Auditor**, since the UI grew pickers,
+trays and disclosure panels without a focus-management pass, and a **Release
+Notes** writer, since commit history is the only changelog.
 
 ---
 
@@ -187,7 +193,9 @@ Ordered by value against effort, from an engineering point of view.
 6. **Prompt improver loop.** Use the rating and score data already being
    collected.
 7. **Sharing.** A read-only link to one prompt or a journey.
-8. **Semantic catalog search.** Matching is keyword overlap today, so
-   "I want to get fit" finds nothing that "fitness" would.
+8. ~~**Semantic catalog search.**~~ Largely addressed. `src/lib/textSearch.ts`
+   adds stemming, synonym groups and IDF ranking, so "I want to get fit" now
+   finds the fitness journey. True embedding search remains an option for
+   large libraries.
 9. **User contributions to the catalog.** It is a static file; there is no path
    from a great personal prompt to the public library.

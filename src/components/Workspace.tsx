@@ -64,16 +64,18 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   );
 
   const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    // Every typed word must appear somewhere, in any order, so "letter cover"
+    // finds "Cover letter". Substring matching keeps a half-typed word useful.
+    const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
 
     const filtered = prompts.filter((prompt) => {
       if (category !== "All" && prompt.category !== category) return false;
       if (agentFilter !== "All" && prompt.agentId !== agentFilter) return false;
-      if (!q) return true;
-      return [prompt.title, prompt.content, prompt.category]
+      if (words.length === 0) return true;
+      const haystack = [prompt.title, prompt.content, prompt.category]
         .join(" ")
-        .toLowerCase()
-        .includes(q);
+        .toLowerCase();
+      return words.every((word) => haystack.includes(word));
     });
 
     return [...filtered].sort((a, b) => {

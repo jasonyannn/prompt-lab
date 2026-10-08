@@ -12,6 +12,10 @@
 export const DEFAULT_MODEL = "gpt-5.2";
 export const DEFAULT_EFFORT = "low";
 
+/** Upstream timeouts. The browser gives up on generation at 120 s. */
+const GENERATE_TIMEOUT_MS = 115_000;
+const CHAT_TIMEOUT_MS = 90_000;
+
 export type GenerateMode = "pack" | "predict";
 
 export type GenerateRequest = {
@@ -156,6 +160,56 @@ export type ModelConfig = {
   effort?: string;
 };
 
+/**
+ * Posts to the Responses API with a hard timeout, and reads the reply without
+ * assuming it is JSON — an upstream gateway error arrives as HTML, and parsing
+ * that used to replace the real status with a SyntaxError.
+ */
+async function callResponsesApi<T extends { error?: { message?: string } }>(
+  apiKey: string,
+  body: unknown,
+  timeoutMs: number,
+  signal?: AbortSignal
+): Promise<T> {
+  const timeout = AbortSignal.timeout(timeoutMs);
+  const combined = signal ? AbortSignal.any([signal, timeout]) : timeout;
+
+  let response: Response;
+  try {
+    response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      signal: combined,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (error) {
+    if (timeout.aborted) {
+      throw new Error("The model took too long to respond. Try a smaller request.");
+    }
+    throw error;
+  }
+
+  const text = await response.text();
+  let payload: T | null = null;
+  try {
+    payload = JSON.parse(text) as T;
+  } catch {
+    payload = null;
+  }
+
+  if (!response.ok || !payload || payload.error) {
+    const message = payload?.error?.message;
+    if (response.status === 429) {
+      throw new Error(message || "The model provider is rate limiting requests. Try again shortly.");
+    }
+    throw new Error(message || `The model request failed (${response.status}).`);
+  }
+  return payload;
+}
+
 export async function generateWithModel(
   request: GenerateRequest,
   config: ModelConfig,
@@ -163,14 +217,14 @@ export async function generateWithModel(
 ): Promise<{ prompts: GeneratedItem[]; model: string }> {
   const model = config.model || DEFAULT_MODEL;
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    signal,
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const payload = await callResponsesApi<{
+    error?: { message?: string };
+    model?: string;
+    status?: string;
+    incomplete_details?: { reason?: string };
+  }>(
+    config.apiKey,
+    {
       model,
       input: buildInput(request),
       text: {
@@ -184,21 +238,11 @@ export async function generateWithModel(
       reasoning: { effort: config.effort || DEFAULT_EFFORT },
       // Roughly 900 output tokens per prompt, plus headroom.
       max_output_tokens: Math.min(16000, 1200 + request.count * 900),
-    }),
-  });
+    },
+    GENERATE_TIMEOUT_MS,
+    signal
+  );
 
-  const payload = (await response.json()) as {
-    error?: { message?: string };
-    model?: string;
-    status?: string;
-    incomplete_details?: { reason?: string };
-  };
-
-  if (!response.ok || payload.error) {
-    throw new Error(
-      payload.error?.message || `The model request failed (${response.status}).`
-    );
-  }
   if (payload.status === "incomplete") {
     throw new Error(
       `The model stopped early (${payload.incomplete_details?.reason ?? "unknown reason"}). Try asking for fewer prompts.`
@@ -277,6 +321,7 @@ export function parseChatRequest(body: unknown): ChatRequest | string {
   }
   if (input.input.length > 200) return "Conversation is too long.";
   if (!Array.isArray(input.tools)) return "`tools` must be an array.";
+  if (input.tools.length > 128) return "Too many tools.";
 
   return {
     instructions: input.instructions.slice(0, 20_000),
@@ -292,34 +337,23 @@ export async function chatWithModel(
 ): Promise<{ output: unknown[]; model: string }> {
   const model = config.model || DEFAULT_MODEL;
 
-  const response = await fetch("https://api.openai.com/v1/responses", {
-    method: "POST",
-    signal,
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const payload = await callResponsesApi<{
+    error?: { message?: string };
+    output?: unknown[];
+    model?: string;
+  }>(
+    config.apiKey,
+    {
       model,
       instructions: request.instructions,
       input: request.input,
       tools: request.tools,
       reasoning: { effort: config.effort || DEFAULT_EFFORT },
       max_output_tokens: 4000,
-    }),
-  });
-
-  const payload = (await response.json()) as {
-    error?: { message?: string };
-    output?: unknown[];
-    model?: string;
-  };
-
-  if (!response.ok || payload.error) {
-    throw new Error(
-      payload.error?.message || `The model request failed (${response.status}).`
-    );
-  }
+    },
+    CHAT_TIMEOUT_MS,
+    signal
+  );
 
   return { output: payload.output ?? [], model: payload.model || model };
 }

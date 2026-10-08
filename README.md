@@ -281,8 +281,8 @@ Supabase. The personal library remains browser-local and stores prompts in
 `localStorage`, while the forum persists public prompt posts and discussion data
 in the database.
 
-Users can sign in with email magic links, and signed-in authors appear in the
-forum using their authenticated profile name. If a user is not signed in, they
+Users can sign in with an email and password (Supabase Auth), and signed-in
+authors appear in the forum using their profile name. If a user is not signed in, they
 can still publish an anonymous post; the UI then renders the post without a user
 identity instead of requiring an account.
 
@@ -293,10 +293,38 @@ author relationship stable without copying a user label into the post row.
 Likes are handled in two layers:
 
 - `forum_post_likes` records the per-user action for each post
-- `forum_post_like_totals` stores the computed aggregate count used by the UI
+- `forum_post_like_totals` holds the aggregate count, maintained by a database
+  trigger and read-only to clients, so a count cannot be set from the browser
 
-This avoids writing the total count back onto the protected `forum_posts` row,
-while still giving the app a fast and reliable count for the like button.
+The full schema, with row-level security, lives in
+[`supabase/migrations/`](supabase/migrations/).
+
+### Setting up Supabase
+
+1. Create a Supabase project, open the SQL editor, and run
+   `supabase/migrations/20261008000000_forum_schema.sql`.
+2. Put the project URL and anon key in `.env.local`:
+   ```bash
+   VITE_SUPABASE_URL=https://<ref>.supabase.co
+   VITE_SUPABASE_ANON_KEY=<anon key>
+   ```
+3. For the GitHub Pages build, add the same two values as repository
+   **variables** (Settings → Secrets and variables → Actions → Variables).
+
+The anon key is public by design; row-level security is what protects the
+data. Free-tier projects pause after about a week without traffic, and sign-in
+then fails with a network error until the project is resumed.
+
+## Search
+
+Every search surface — Discover, the library, `search_products`,
+`search_catalog` and the remote `search_prompts` — shares one ranker,
+[`src/lib/textSearch.ts`](src/lib/textSearch.ts). It matches whole words
+rather than substrings, stems inflections (`budgeting` → `budget`), expands
+everyday words through small synonym groups (`get fit` → fitness, workout),
+weights titles above bodies, and favours results that answer every word of the
+query. It is deterministic and dependency-free, so the browser and the worker
+rank identically. Details are in [docs/architecture.md](docs/architecture.md#retrieval).
 
 ## Features
 
@@ -355,7 +383,11 @@ npm install
 npm run dev        # http://localhost:5173
 npm run build      # typecheck + production bundle to dist/
 npm run typecheck
+npm test           # vitest
 ```
+
+Contributor and coding-agent guidance is in [AGENTS.md](AGENTS.md); the system
+design is in [docs/architecture.md](docs/architecture.md).
 
 Browser WebMCP requires a **secure origin**: localhost, or HTTPS in production.
 The remote endpoint is emitted in the Sites build with a D1 binding and the
@@ -371,6 +403,7 @@ src/
   lib/attachments.ts     local file validation, extraction and WebMCP scope
   lib/knowledgeStore.ts  IndexedDB-backed, agent-specific reusable files
   lib/promptEvaluator.ts deterministic prompt rubric and sample-output test
+  lib/textSearch.ts      shared ranked search used by every search surface
   lib/webmcp.ts          WebMCP types, tool definitions, registration, activity log
   hooks/useWebMCP.ts     registers the tool set once, exposes status + activity
   hooks/useRemoteMCP.ts  detects /mcp and merges remote activity into the UI
@@ -378,11 +411,12 @@ src/
   components/            status badge, activity panel, list, detail, new-prompt form
   App.tsx                root; calls useWebMCP()
 server/
-  index.ts               Cloudflare Worker routing, CORS and /mcp mount
+  index.ts               Worker routing, CORS, /mcp mount, model-route limits
   mcp.ts                 remote MCP server and 16 tool definitions
   database.ts            D1 persistence, seeds, versions and activity
 db/schema.ts             Drizzle source schema
 drizzle/                 generated D1 migration
+supabase/migrations/     forum schema and row-level security (Supabase)
 ```
 
 ## Status

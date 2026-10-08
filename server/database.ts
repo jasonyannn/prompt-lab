@@ -1,3 +1,5 @@
+import { queryWords, rankItems } from "../src/lib/textSearch";
+
 export type AgentRecord = {
   id: string;
   name: string;
@@ -235,6 +237,13 @@ async function initialize(db: D1Database) {
       change_summary TEXT,
       created_at TEXT NOT NULL
     )`),
+    // Fixed-window counters for the metered model routes, keyed by caller IP.
+    db.prepare(`CREATE TABLE IF NOT EXISTS model_rate_limits (
+      ip TEXT NOT NULL,
+      window_start TEXT NOT NULL,
+      count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (ip, window_start)
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS remote_activity (
       id TEXT PRIMARY KEY NOT NULL,
       tool TEXT NOT NULL,
@@ -257,69 +266,68 @@ async function initialize(db: D1Database) {
     ),
   ]);
 
-  for (const agent of starterAgents) {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO agents
-        (id, name, role, instructions, default_category, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        agent.id,
-        agent.name,
-        agent.role,
-        agent.instructions,
-        agent.defaultCategory,
-        agent.createdAt,
-        agent.updatedAt
-      )
-      .run();
-  }
-
-  for (const prompt of starterPrompts) {
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO prompts
-        (id, title, content, category, agent_id, rating, usage_count, family_id,
-         parent_prompt_id, version_label, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        prompt.id,
-        prompt.title,
-        prompt.content,
-        prompt.category,
-        prompt.agentId,
-        prompt.rating,
-        prompt.usageCount,
-        prompt.familyId,
-        prompt.parentPromptId,
-        prompt.versionLabel,
-        prompt.createdAt,
-        prompt.updatedAt
-      )
-      .run();
-
-    await db
-      .prepare(
-        `INSERT OR IGNORE INTO prompt_versions
-        (id, prompt_id, version_number, title, content, category, agent_id,
-         version_label, change_summary, created_at)
-        VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`
-      )
-      .bind(
-        `${prompt.id}-v1`,
-        prompt.id,
-        prompt.title,
-        prompt.content,
-        prompt.category,
-        prompt.agentId,
-        prompt.versionLabel,
-        "Initial version",
-        prompt.createdAt
-      )
-      .run();
-  }
+  // Seeds go in one batch: this runs on every cold isolate, and sequential
+  // statements cost a round trip each.
+  await db.batch([
+    ...starterAgents.map((agent) =>
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO agents
+          (id, name, role, instructions, default_category, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          agent.id,
+          agent.name,
+          agent.role,
+          agent.instructions,
+          agent.defaultCategory,
+          agent.createdAt,
+          agent.updatedAt
+        )
+    ),
+    ...starterPrompts.flatMap((prompt) => [
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO prompts
+          (id, title, content, category, agent_id, rating, usage_count, family_id,
+           parent_prompt_id, version_label, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          prompt.id,
+          prompt.title,
+          prompt.content,
+          prompt.category,
+          prompt.agentId,
+          prompt.rating,
+          prompt.usageCount,
+          prompt.familyId,
+          prompt.parentPromptId,
+          prompt.versionLabel,
+          prompt.createdAt,
+          prompt.updatedAt
+        ),
+      db
+        .prepare(
+          `INSERT OR IGNORE INTO prompt_versions
+          (id, prompt_id, version_number, title, content, category, agent_id,
+           version_label, change_summary, created_at)
+          VALUES (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          `${prompt.id}-v1`,
+          prompt.id,
+          prompt.title,
+          prompt.content,
+          prompt.category,
+          prompt.agentId,
+          prompt.versionLabel,
+          "Initial version",
+          prompt.createdAt
+        ),
+    ]),
+  ]);
 
   await db.prepare("PRAGMA optimize").run();
 }
@@ -426,6 +434,9 @@ export async function updateAgent(
   return next;
 }
 
+/** Candidate rows fetched for in-worker ranking when a query is given. */
+const SEARCH_CANDIDATES = 300;
+
 export async function searchPrompts(
   db: D1Database,
   input: {
@@ -438,13 +449,24 @@ export async function searchPrompts(
   await ensureDatabase(db);
   const conditions: string[] = [];
   const values: unknown[] = [];
-  if (input.query) {
-    conditions.push(
-      "(title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\')"
-    );
-    const escaped = input.query.replace(/[\\%_]/g, "\\$&");
-    const pattern = `%${escaped}%`;
-    values.push(pattern, pattern, pattern);
+  const limit = Math.max(1, Math.min(100, input.limit ?? 25));
+
+  // SQL only prefilters: any row containing any query word (or a synonym) is
+  // a candidate, so word order and inflection no longer cause misses. The
+  // ranking itself is the shared one the browser uses.
+  const words = input.query ? queryWords(input.query).slice(0, 24) : [];
+  if (words.length > 0) {
+    const clauses: string[] = [];
+    for (const word of words) {
+      // Stems ending in "y" come from "-ies" words; match the shared prefix.
+      const fragment = word.length > 3 && word.endsWith("y") ? word.slice(0, -1) : word;
+      const pattern = `%${fragment.replace(/[\\%_]/g, "\\$&")}%`;
+      clauses.push(
+        "title LIKE ? ESCAPE '\\' OR content LIKE ? ESCAPE '\\' OR category LIKE ? ESCAPE '\\'"
+      );
+      values.push(pattern, pattern, pattern);
+    }
+    conditions.push(`(${clauses.join(" OR ")})`);
   }
   if (input.category) {
     conditions.push("category = ?");
@@ -455,13 +477,26 @@ export async function searchPrompts(
     values.push(input.agentId);
   }
   const where = conditions.length ? ` WHERE ${conditions.join(" AND ")}` : "";
-  const limit = Math.max(1, Math.min(100, input.limit ?? 25));
-  values.push(limit);
+  values.push(words.length > 0 ? SEARCH_CANDIDATES : limit);
   const result = await db
     .prepare(`SELECT * FROM prompts${where} ORDER BY updated_at DESC LIMIT ?`)
     .bind(...values)
     .all<PromptRow>();
-  return result.results.map(toPrompt);
+  const prompts = result.results.map(toPrompt);
+  if (words.length === 0) return prompts;
+
+  return rankItems(
+    prompts,
+    input.query ?? "",
+    (prompt) => [
+      { text: prompt.title, weight: 3 },
+      { text: prompt.category, weight: 1.5 },
+      { text: prompt.content, weight: 1 },
+    ],
+    { minRelativeScore: 0.1 }
+  )
+    .slice(0, limit)
+    .map((hit) => hit.item);
 }
 
 export async function getPrompt(
@@ -689,28 +724,84 @@ export async function logRemoteActivity(
 ) {
   await ensureDatabase(db);
   const timestamp = new Date().toISOString();
-  await db
-    .prepare(
-      `INSERT INTO remote_activity
-      (id, tool, input_json, summary, ok, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .bind(
-      crypto.randomUUID(),
-      input.tool,
-      JSON.stringify(input.arguments),
-      input.summary,
-      input.ok ? 1 : 0,
-      timestamp
-    )
-    .run();
-  await db
-    .prepare(
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO remote_activity
+        (id, tool, input_json, summary, ok, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        crypto.randomUUID(),
+        input.tool,
+        // Tool arguments can carry a whole prompt body; the feed only needs a
+        // preview, and an unbounded row slows every activity poll.
+        JSON.stringify(input.arguments).slice(0, 4000),
+        input.summary,
+        input.ok ? 1 : 0,
+        timestamp
+      ),
+    db.prepare(
       `DELETE FROM remote_activity WHERE id NOT IN (
         SELECT id FROM remote_activity ORDER BY created_at DESC LIMIT 100
       )`
+    ),
+  ]);
+}
+
+export type RateLimitResult = {
+  allowed: boolean;
+  limit: number;
+  remaining: number;
+  /** Seconds until the current window resets. */
+  retryAfter: number;
+};
+
+/**
+ * Counts one call against `ip` in the current hour and reports whether it is
+ * within `limit`. Fixed windows are coarse — a caller can burst across a
+ * boundary — but they cost one statement and bound spend per IP per hour,
+ * which is the point.
+ */
+export async function consumeRateLimit(
+  db: D1Database,
+  ip: string,
+  limit: number,
+  now = new Date()
+): Promise<RateLimitResult> {
+  await ensureDatabase(db);
+  const windowStart = new Date(now);
+  windowStart.setUTCMinutes(0, 0, 0);
+  const windowKey = windowStart.toISOString();
+  const retryAfter = Math.max(
+    1,
+    Math.ceil((windowStart.getTime() + 3_600_000 - now.getTime()) / 1000)
+  );
+
+  const row = await db
+    .prepare(
+      `INSERT INTO model_rate_limits (ip, window_start, count) VALUES (?, ?, 1)
+       ON CONFLICT (ip, window_start) DO UPDATE SET count = count + 1
+       RETURNING count`
     )
-    .run();
+    .bind(ip, windowKey)
+    .first<{ count: number }>();
+  const count = row?.count ?? 1;
+
+  // Old windows are useless; clear them now and then rather than every call.
+  if (Math.random() < 0.02) {
+    await db
+      .prepare("DELETE FROM model_rate_limits WHERE window_start < ?")
+      .bind(windowKey)
+      .run();
+  }
+
+  return {
+    allowed: count <= limit,
+    limit,
+    remaining: Math.max(0, limit - count),
+    retryAfter,
+  };
 }
 
 export async function listRemoteActivity(

@@ -7,7 +7,8 @@ code as it stands, not as it is intended to be.
 
 ## Finding 1 — the model endpoints are open, and they spend real money
 
-**Severity: high. Fix before the site is publicly linked.**
+**Severity: high → medium. Mitigations 2 and 3 are now in place (October 2026);
+1 is still on you, and 4 needs accounts.**
 
 `/api/model/generate` and `/api/model/chat` have no authentication, no rate
 limiting and no per-caller quota. The only guard is an Origin check
@@ -40,8 +41,12 @@ single call to that route can be worth up to 16,000 output tokens
 4. **Require identity** for metered calls. The real fix, and a prerequisite for
    billing anyway (see `subscription.md`).
 
-Until at least (1) and (3) are in place, treat the deployed model endpoints as a
-spending liability, not a feature.
+**Status.** `server/index.ts` now rejects model POSTs with a missing or
+unlisted `Origin` (`rejectModelOrigin`), refuses bodies over 8 MB, and counts
+every call against a per-IP hourly window in D1 (`consumeRateLimit`; 60/hour
+by default, `MODEL_RATE_LIMIT_PER_HOUR` to change). Upstream calls time out at
+90–115 s, so a hung request no longer holds a worker. The spend cap (1) is
+still the only control that bounds total cost across many IPs. Set it.
 
 ---
 
@@ -61,6 +66,26 @@ is the right call for a demo. It is not a position that survives having users.
 Mitigations: per-user scoping in the schema, a bearer token per client, and
 soft-delete instead of hard-delete. All three are prerequisites for the paid
 tiers.
+
+---
+
+---
+
+## Finding 3 — forum search let user input rewrite the filter (fixed)
+
+`searchForumPosts` interpolated the raw query into a PostgREST `.or()` string.
+Commas, dots and parentheses are filter syntax there, so a crafted search could
+add conditions (`x,status.eq.removed`) or break the request. RLS still bounded
+what could be read, but the query is now split into words reduced to letters,
+digits and hyphens before it reaches the filter.
+
+## Finding 4 — forum like totals were client-writable (fixed)
+
+The client used to read the like total, add one, and write it back. Any
+signed-in user could set any post's count, and two concurrent likes lost an
+update. Totals are now kept by a `SECURITY DEFINER` trigger on
+`forum_post_likes`, and clients have read-only access
+(`supabase/migrations/20261008000000_forum_schema.sql`).
 
 ---
 
@@ -153,13 +178,13 @@ without identity there is no way to attribute a deletion.
 ## If deploying publicly, in order
 
 1. Hard spend cap on the OpenAI key.
-2. Rate limit `/api/model/*` by IP.
-3. Reject requests with no `Origin` on the model routes.
+2. ~~Rate limit `/api/model/*` by IP.~~ Done.
+3. ~~Reject requests with no `Origin` on the model routes.~~ Done.
 4. Decide whether `/mcp` stays open. If yes, say so prominently in the UI, not
    only in the README. If no, add per-client tokens.
 5. Add a CSP header.
 6. Soft-delete on the remote library.
 7. Dependency scanning in CI.
 
-Items 1–3 are hours of work and remove the only finding that costs money while
-you sleep.
+Item 1 takes minutes in the OpenAI dashboard, and together with the rate limit
+it removes the only finding that costs money while you sleep.

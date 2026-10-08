@@ -64,9 +64,18 @@ export async function searchForumPosts(
     .eq("status", "published");
 
   if (category) request = request.eq("category", category);
-  if (query && query.trim()) {
-    const term = query.trim();
-    request = request.or(`title.ilike.%${term}%,content.ilike.%${term}%`);
+  // Each word must appear in the title or body. Words are reduced to letters,
+  // digits and hyphens first: commas, dots and parentheses are PostgREST
+  // filter syntax, so passing raw input into .or() let a search like
+  // "a,status.eq.removed" rewrite the filter (or simply break it).
+  const words = (query ?? "")
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}\p{N}-]/gu, ""))
+    .filter((word) => word.length > 0)
+    .slice(0, 6);
+  for (const word of words) {
+    request = request.or(`title.ilike.%${word}%,content.ilike.%${word}%`);
   }
 
   const { data, error } = await request

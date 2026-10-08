@@ -1,3 +1,5 @@
+import { rankItems } from "./textSearch";
+
 export type Prompt = {
   id: string;
   title: string;
@@ -67,6 +69,8 @@ Include:
   },
 ];
 
+const BACKUP_KEY = "promptlab_prompts_unreadable_backup";
+
 function read(): Prompt[] {
   const saved = localStorage.getItem(STORAGE_KEY);
 
@@ -76,14 +80,41 @@ function read(): Prompt[] {
   }
 
   try {
-    return JSON.parse(saved);
+    const parsed: unknown = JSON.parse(saved);
+    if (Array.isArray(parsed)) {
+      return parsed.filter(
+        (prompt): prompt is Prompt =>
+          Boolean(prompt) &&
+          typeof prompt.id === "string" &&
+          typeof prompt.title === "string" &&
+          typeof prompt.content === "string"
+      );
+    }
   } catch {
-    return starterPrompts;
+    // Fall through to the backup below.
   }
+
+  // The next write would overwrite whatever is there, so keep a copy of the
+  // unreadable value rather than silently destroying someone's library.
+  try {
+    localStorage.setItem(BACKUP_KEY, saved);
+  } catch {
+    // Storage is full; nothing more can be done from here.
+  }
+  return starterPrompts;
 }
 
 function write(prompts: Prompt[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(prompts));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(prompts));
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "QuotaExceededError") {
+      throw new Error(
+        "Browser storage is full, so the library could not be saved. Export your library, then delete prompts or knowledge files you no longer need."
+      );
+    }
+    throw error;
+  }
 
   window.dispatchEvent(
     new CustomEvent("promptlab:prompts-updated")
@@ -99,19 +130,13 @@ export const promptStore = {
     return read().find((prompt) => prompt.id === id);
   },
 
+  /** Ranked by relevance: title hits first, then category, then body. */
   search(query: string): Prompt[] {
-    const q = query.toLowerCase();
-
-    return read().filter((prompt) =>
-      [
-        prompt.title,
-        prompt.content,
-        prompt.category,
-      ]
-        .join(" ")
-        .toLowerCase()
-        .includes(q)
-    );
+    return rankItems(read(), query, (prompt) => [
+      { text: prompt.title, weight: 3 },
+      { text: prompt.category, weight: 1.5 },
+      { text: prompt.content, weight: 1 },
+    ], { minRelativeScore: 0.1 }).map((hit) => hit.item);
   },
 
   create(input: {

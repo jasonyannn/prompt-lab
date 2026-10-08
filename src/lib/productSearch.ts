@@ -1,3 +1,5 @@
+import { parseQuery, rankItems, type SearchField } from "./textSearch";
+
 export type ProductType =
   | "prompt"
   | "journey"
@@ -47,16 +49,13 @@ export function isPubliclyListable(record: ProductRecord): boolean {
   return record.visibility === undefined || record.visibility === "public";
 }
 
-function score(record: ProductRecord, terms: string[]): number {
-  if (terms.length === 0) return 1;
-  const name = record.name.toLowerCase();
-
-  let total = 0;
-  for (const term of terms) {
-    if (name.includes(term)) total += 3;
-    else if (record.searchText.includes(term)) total += 1;
-  }
-  return total;
+function searchFields(record: ProductRecord): SearchField[] {
+  return [
+    { text: record.name, weight: 3 },
+    { text: record.description, weight: 1.5 },
+    { text: record.category, weight: 1 },
+    { text: record.searchText, weight: 1 },
+  ];
 }
 
 /** Shared ranked search used by the browser WebMCP and remote MCP server. */
@@ -64,8 +63,7 @@ export function searchProductRecords(
   input: ProductSearchInput,
   records: ProductRecord[]
 ): ProductSearchResult {
-  const query = (input.query ?? "").trim().toLowerCase();
-  const terms = query.split(/\s+/).filter(Boolean);
+  const query = (input.query ?? "").trim();
   const category = (input.category ?? "").trim().toLowerCase();
 
   const requested = Number(input.limit);
@@ -73,18 +71,18 @@ export function searchProductRecords(
     ? Math.max(1, Math.min(MAX_LIMIT, Math.floor(requested)))
     : DEFAULT_LIMIT;
 
-  const matched = records
+  const candidates = records
     .filter(isPubliclyListable)
     .filter((record) =>
       category ? record.category.toLowerCase() === category : true
-    )
-    .map((record) => ({ record, weight: score(record, terms) }))
-    .filter((entry) => entry.weight > 0)
-    .sort(
-      (a, b) =>
-        b.weight - a.weight || a.record.name.localeCompare(b.record.name)
     );
 
-  const products = matched.slice(0, limit).map((entry) => toProduct(entry.record));
+  // A query made only of stop words ("the", "a") carries no signal, so it
+  // browses like an empty query instead of matching every record by accident.
+  const ranked = parseQuery(query).length
+    ? rankItems(candidates, query, searchFields).map((hit) => hit.item)
+    : [...candidates].sort((a, b) => a.name.localeCompare(b.name));
+
+  const products = ranked.slice(0, limit).map(toProduct);
   return { products, count: products.length };
 }
