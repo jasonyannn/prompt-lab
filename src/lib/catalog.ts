@@ -13,6 +13,7 @@
  */
 
 import { CATALOG_CATEGORIES, CATALOG_PROMPTS, JOURNEYS } from "./catalogData";
+import { createSearchIndex, type SearchIndex } from "./textSearch";
 
 export type PromptTier = "quick" | "workflow" | "master";
 
@@ -267,28 +268,31 @@ export function categoryCounts(): Record<string, number> {
  * Goal search
  * ------------------------------------------------------------------ */
 
-const STOP_WORDS = new Set([
-  "a", "an", "and", "are", "as", "at", "be", "but", "by", "can", "do", "for",
-  "from", "get", "help", "how", "i", "in", "is", "it", "its", "me", "my", "of",
-  "on", "or", "our", "should", "so", "that", "the", "then", "this", "to", "up",
-  "want", "was", "we", "what", "when", "which", "who", "will", "with", "would",
-  "you", "your",
-]);
+// The catalog is static, so each index is built once, on first search.
+let journeyIndexCache: SearchIndex<Journey> | null = null;
+let promptIndexCache: SearchIndex<CatalogPromptSpec> | null = null;
 
-function terms(value: string) {
-  return value
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((term) => term.length > 2 && !STOP_WORDS.has(term));
+function journeyIndex() {
+  journeyIndexCache ??= createSearchIndex(JOURNEYS, (journey) => [
+    // The goal line is what a user types, so it counts double.
+    { text: journey.goal, weight: 2 },
+    { text: journey.name, weight: 1.5 },
+    { text: journey.outcome, weight: 1 },
+    { text: getCategory(journey.categoryId)?.name ?? "", weight: 0.8 },
+    { text: journey.steps.map((step) => step.note).join(" "), weight: 0.4 },
+  ]);
+  return journeyIndexCache;
 }
 
-function overlap(query: string[], haystack: string) {
-  const text = haystack.toLowerCase();
-  let score = 0;
-  for (const term of query) {
-    if (text.includes(term)) score += 1;
-  }
-  return score;
+function promptIndex() {
+  promptIndexCache ??= createSearchIndex(CATALOG_PROMPTS, (prompt) => [
+    { text: prompt.title, weight: 2 },
+    { text: prompt.tags.join(" "), weight: 1.2 },
+    { text: prompt.summary, weight: 1 },
+    { text: getCategory(prompt.categoryId)?.name ?? "", weight: 0.8 },
+    { text: prompt.objective, weight: 0.6 },
+  ]);
+  return promptIndexCache;
 }
 
 export type CatalogSearchResult = {
@@ -301,27 +305,15 @@ export type CatalogSearchResult = {
  * first, then individual prompts. A goal usually deserves a path, not a prompt.
  */
 export function searchCatalog(query: string): CatalogSearchResult {
-  const query_terms = terms(query);
-  if (query_terms.length === 0) return { journeys: [], prompts: [] };
-
-  const journeys = JOURNEYS.map((journey) => ({
-    journey,
-    // The goal line is what a user types, so it counts double.
-    score:
-      overlap(query_terms, journey.goal) * 2 +
-      overlap(query_terms, `${journey.name} ${journey.outcome}`),
-  }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score);
-
-  const prompts = CATALOG_PROMPTS.map((prompt) => ({
-    prompt,
-    score:
-      overlap(query_terms, prompt.title) * 2 +
-      overlap(query_terms, `${prompt.summary} ${prompt.tags.join(" ")}`),
-  }))
-    .filter((entry) => entry.score > 0)
-    .sort((a, b) => b.score - a.score || a.prompt.title.localeCompare(b.prompt.title));
-
-  return { journeys, prompts };
+  // A goal usually names one thing — "start an online store" — so a journey
+  // or prompt only needs to answer part of it to be worth showing.
+  return {
+    journeys: journeyIndex()
+      .search(query, { minRelativeScore: 0.25 })
+      .map(({ item, score }) => ({ journey: item, score })),
+    prompts: promptIndex()
+      .search(query, { minRelativeScore: 0.15 })
+      .map(({ item, score }) => ({ prompt: item, score }))
+      .sort((a, b) => b.score - a.score || a.prompt.title.localeCompare(b.prompt.title)),
+  };
 }

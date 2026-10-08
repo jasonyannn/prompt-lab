@@ -37,6 +37,39 @@ export type ModelPrompt = {
   content: string;
 };
 
+/**
+ * Reads a model route's JSON reply. A static host (GitHub Pages) answers
+ * `/api/*` with an HTML 404, and a gateway can answer with an HTML 502; both
+ * used to surface as "Unexpected token <". Turn them into a readable error.
+ */
+export async function readModelResponse<T extends { error?: string }>(
+  response: Response,
+  fallback: string
+): Promise<T> {
+  const text = await response.text();
+  let payload: T | null = null;
+  try {
+    payload = text ? (JSON.parse(text) as T) : null;
+  } catch {
+    payload = null;
+  }
+
+  if (!payload) {
+    throw new Error(
+      response.status === 404
+        ? "The AI model isn't available on this deployment. Built-in generators still work."
+        : `${fallback} (${response.status}).`
+    );
+  }
+  if (response.status === 429) {
+    throw new Error(payload.error || "Too many AI requests. Wait a little and try again.");
+  }
+  if (!response.ok || payload.error) {
+    throw new Error(payload.error || `${fallback} (${response.status}).`);
+  }
+  return payload;
+}
+
 /** Generation is slow — roughly 900 output tokens per prompt. */
 const TIMEOUT_MS = 120_000;
 
@@ -63,7 +96,7 @@ export async function generateWithModel(
 ): Promise<{ prompts: ModelPrompt[]; model: string }> {
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), TIMEOUT_MS);
-  signal?.addEventListener("abort", () => controller.abort());
+  signal?.addEventListener("abort", () => controller.abort(), { once: true });
 
   try {
     const response = await fetch(`${APP_BASE}api/model/generate`, {
@@ -73,15 +106,11 @@ export async function generateWithModel(
       body: JSON.stringify(request),
     });
 
-    const payload = (await response.json()) as {
+    const payload = await readModelResponse<{
       prompts?: ModelPrompt[];
       model?: string;
       error?: string;
-    };
-
-    if (!response.ok || payload.error) {
-      throw new Error(payload.error || `Generation failed (${response.status}).`);
-    }
+    }>(response, "Generation failed");
     if (!Array.isArray(payload.prompts) || payload.prompts.length === 0) {
       throw new Error("The model returned no prompts.");
     }

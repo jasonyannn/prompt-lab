@@ -1,5 +1,5 @@
 import { createMcpHandler } from "@modelcontextprotocol/server";
-import { ensureDatabase, listRemoteActivity } from "./database";
+import { consumeRateLimit, ensureDatabase, listRemoteActivity } from "./database";
 import {
   createPromptLabMcpServer,
   createPromptLabMcpServerOnly,
@@ -43,6 +43,29 @@ function rejectInvalidOrigin(request: Request, env: Env): Response | null {
     },
     { status: 403 }
   );
+}
+
+/**
+ * Model calls spend real money, so they are stricter than /mcp: a browser
+ * always sends Origin on a POST, and a request without one is a script.
+ * Spoofable, so this is a speed bump; the rate limit below is the real bound.
+ */
+function rejectModelOrigin(request: Request, env: Env): Response | null {
+  if (request.method !== "POST") return null;
+  const origin = request.headers.get("Origin");
+  if (origin && allowedOrigins(request, env).has(origin)) return null;
+  return json({ error: "Origin is not allowed." }, { status: 403 });
+}
+
+/** Largest model request body accepted: a few images plus a long chat. */
+const MAX_MODEL_BODY_BYTES = 8 * 1024 * 1024;
+const DEFAULT_MODEL_CALLS_PER_HOUR = 60;
+
+function modelCallsPerHour(env: Env) {
+  const configured = Number(env.MODEL_RATE_LIMIT_PER_HOUR);
+  return Number.isFinite(configured) && configured > 0
+    ? Math.floor(configured)
+    : DEFAULT_MODEL_CALLS_PER_HOUR;
 }
 
 function corsHeaders(request: Request, env: Env) {
@@ -186,9 +209,47 @@ async function handleModel(request: Request, env: Env, pathname: string) {
     );
   }
 
+  const strictOrigin = rejectModelOrigin(request, env);
+  if (strictOrigin) return withHeaders(strictOrigin, cors);
+
+  const declaredLength = Number(request.headers.get("Content-Length") ?? 0);
+  if (declaredLength > MAX_MODEL_BODY_BYTES) {
+    return withHeaders(
+      json({ error: "Request is too large. Attach fewer or smaller images." }, { status: 413 }),
+      cors
+    );
+  }
+
+  if (env.DB) {
+    const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+    try {
+      const limit = await consumeRateLimit(env.DB, ip, modelCallsPerHour(env));
+      if (!limit.allowed) {
+        const limited = json(
+          {
+            error: `AI request limit reached (${limit.limit} per hour). Built-in generators still work; try the model again in ${Math.ceil(limit.retryAfter / 60)} minutes.`,
+          },
+          { status: 429 }
+        );
+        limited.headers.set("Retry-After", String(limit.retryAfter));
+        return withHeaders(limited, cors);
+      }
+    } catch (error) {
+      // A broken limiter must not take the feature down with it.
+      console.error("[model:rate-limit]", error);
+    }
+  }
+
   let body: unknown;
   try {
-    body = await request.json();
+    const raw = await request.text();
+    if (raw.length > MAX_MODEL_BODY_BYTES) {
+      return withHeaders(
+        json({ error: "Request is too large. Attach fewer or smaller images." }, { status: 413 }),
+        cors
+      );
+    }
+    body = JSON.parse(raw);
   } catch {
     return withHeaders(json({ error: "Invalid JSON body." }, { status: 400 }), cors);
   }

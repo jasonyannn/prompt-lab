@@ -12,6 +12,7 @@
 
 import { PROMPT_TOOLS, executeTool } from "./webmcp";
 import { systemPrompt, type ChatMessage, type ChatProgress } from "./ollama";
+import { readModelResponse } from "./modelClient";
 
 const APP_BASE = import.meta.env.BASE_URL.endsWith("/")
   ? import.meta.env.BASE_URL
@@ -93,14 +94,10 @@ async function callModel(
     body: JSON.stringify({ instructions, input, tools: toResponsesTools() }),
   });
 
-  const payload = (await response.json()) as {
+  const payload = await readModelResponse<{
     output?: OutputItem[];
     error?: string;
-  };
-
-  if (!response.ok || payload.error) {
-    throw new Error(payload.error || `The agent request failed (${response.status}).`);
-  }
+  }>(response, "The agent request failed");
 
   return payload.output ?? [];
 }

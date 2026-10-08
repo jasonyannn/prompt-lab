@@ -15,4 +15,6 @@ export type Env = {
   OPENAI_MODEL?: string;
   /** Reasoning effort: none, low, medium, high or xhigh. */
   OPENAI_REASONING_EFFORT?: string;
+  /** Model calls allowed per caller IP per hour. Defaults to 60. */
+  MODEL_RATE_LIMIT_PER_HOUR?: string;
 };

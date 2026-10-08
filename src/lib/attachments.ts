@@ -230,25 +230,62 @@ export function attachmentContext(
   if (attachments.length === 0) return "";
 
   const sections: string[] = [];
-  let remaining = maxCharacters;
-  for (const attachment of attachments) {
-    if (remaining <= 0) break;
-    if (attachment.kind === "image") {
-      const line = `[Attached image: ${attachment.name} · ${attachment.mimeType} · ${formatBytes(attachment.size)}]`;
-      sections.push(line);
-      remaining -= line.length;
-      continue;
-    }
+  const imageLines = attachments
+    .filter((attachment) => attachment.kind === "image")
+    .map(
+      (attachment) =>
+        `[Attached image: ${attachment.name} · ${attachment.mimeType} · ${formatBytes(attachment.size)}]`
+    );
+  const documents = attachments.filter((attachment) => attachment.kind === "document");
 
-    const header = `--- BEGIN ATTACHED DOCUMENT: ${attachment.name} ---`;
-    const footer = `--- END ATTACHED DOCUMENT: ${attachment.name} ---`;
-    const available = Math.max(0, remaining - header.length - footer.length - 2);
-    const text = (attachment.text ?? "").slice(0, available);
-    sections.push(`${header}\n${text}\n${footer}`);
-    remaining -= header.length + text.length + footer.length + 2;
+  // Share the budget fairly. Filling it in order let the first long document
+  // crowd every later one out of the context entirely; now short documents
+  // keep all their text and the leftover is split among the long ones.
+  let remaining = Math.max(
+    0,
+    maxCharacters - imageLines.reduce((total, line) => total + line.length + 2, 0)
+  );
+  const frame = (name: string) =>
+    `--- BEGIN ATTACHED DOCUMENT: ${name} ---\n\n--- END ATTACHED DOCUMENT: ${name} ---`.length + 2;
+  const budgets = new Map<UserAttachment, number>();
+  let pending = documents
+    .map((attachment) => ({
+      attachment,
+      wants: (attachment.text ?? "").length,
+      overhead: frame(attachment.name),
+    }))
+    .sort((a, b) => a.wants - b.wants);
+
+  while (pending.length > 0) {
+    const share = Math.floor(remaining / pending.length);
+    const next = pending[0];
+    const cost = next.wants + next.overhead;
+    const granted = cost <= share ? next.wants : Math.max(0, share - next.overhead);
+    budgets.set(next.attachment, granted);
+    remaining -= Math.min(remaining, granted + next.overhead);
+    pending = pending.slice(1);
   }
 
-  if (attachments.some((attachment) => attachment.kind === "document") && remaining <= 0) {
+  let omitted = false;
+  for (const attachment of attachments) {
+    if (attachment.kind === "image") continue;
+    const budget = budgets.get(attachment) ?? 0;
+    const fullText = attachment.text ?? "";
+    if (budget <= 0) {
+      omitted = true;
+      continue;
+    }
+    const text = fullText.slice(0, budget);
+    if (text.length < fullText.length) omitted = true;
+    sections.push(
+      `--- BEGIN ATTACHED DOCUMENT: ${attachment.name} ---\n${text}${
+        text.length < fullText.length ? "\n[…truncated to fit the context limit]" : ""
+      }\n--- END ATTACHED DOCUMENT: ${attachment.name} ---`
+    );
+  }
+  sections.unshift(...imageLines);
+
+  if (omitted) {
     sections.push("[Additional attachment content omitted to fit the context limit]");
   }
   return sections.join("\n\n");
