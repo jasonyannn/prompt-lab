@@ -5,6 +5,7 @@ export type PostVisibility = "public" | "unlisted" | "private";
 export type AuthorProfile = {
   id: string;
   display_name: string | null;
+  username?: string | null;
   avatar_url?: string | null;
   created_at: string | null;
   public_post_count: number;
@@ -29,6 +30,7 @@ export type ForumPost = {
   version: number;
   profiles?: {
     display_name?: string | null;
+    username?: string | null;
   } | null;
 };
 

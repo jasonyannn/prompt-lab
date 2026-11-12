@@ -1,3 +1,4 @@
+import { normalizeUsername } from "./username";
 import { promptStore } from "./promptStore";
 import { supabase } from "./supabase";
 import type { AuthorProfile, ForumInsert, ForumPost } from "../types/forum";
@@ -9,14 +10,15 @@ export type SessionUser = {
 
 export type UserProfile = {
   id: string;
+  username?: string | null;
   display_name?: string | null;
   avatar_url?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
 
-export function getPublicProfileName(profile?: { display_name?: string | null } | null) {
-  return profile?.display_name?.trim() || "Anonymous";
+export function getPublicProfileName(profile?: { display_name?: string | null; username?: string | null } | null) {
+  return profile?.display_name?.trim() || (profile?.username ? `@${profile.username}` : "Anonymous");
 }
 
 function normalizeForumPosts(data: any[] = []): ForumPost[] {
@@ -37,7 +39,7 @@ export async function getPublishedPosts(): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("status", "published")
     .eq("visibility", "public")
@@ -59,7 +61,7 @@ export async function searchForumPosts(
   let request = supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("status", "published");
 
@@ -94,7 +96,7 @@ export async function getForumPostById(postId: string): Promise<ForumPost | null
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("id", postId)
     .eq("status", "published")
@@ -257,7 +259,7 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
 
   const { data, error } = await supabase
     .from("forum_profiles")
-    .select("id, display_name, avatar_url, created_at, updated_at")
+    .select("id, username, display_name, avatar_url, created_at, updated_at")
     .eq("id", user.id)
     .maybeSingle();
 
@@ -267,6 +269,27 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
   }
 
   if (!data) return null;
+  return data as UserProfile;
+}
+
+async function assertUsernameAvailable(username: string) {
+  const { data, error } = await supabase.from("forum_profiles")
+    .select("id").eq("username", username).maybeSingle();
+  if (error) throw new Error("Could not check username availability. Please try again.");
+  if (data) throw new Error("That username is already taken. Choose another.");
+}
+
+export async function updateUsername(value: string): Promise<UserProfile> {
+  const username = normalizeUsername(value);
+  const user = await getSessionUser();
+  if (!user) throw new Error("Sign in to set your username.");
+  const { data, error } = await supabase.from("forum_profiles")
+    .upsert({ id: user.id, username }, { onConflict: "id" })
+    .select("id, username, display_name, avatar_url, created_at, updated_at").single();
+  if (error) {
+    if (error.code === "23505") throw new Error("That username is already taken. Choose another.");
+    throw new Error(error.message || "Could not save your username.");
+  }
   return data as UserProfile;
 }
 
@@ -288,7 +311,7 @@ export async function updateCurrentProfile(input: {
       },
       { onConflict: "id" }
     )
-    .select("id, display_name, avatar_url, created_at, updated_at")
+    .select("id, username, display_name, avatar_url, created_at, updated_at")
     .single();
 
   if (error) {
@@ -354,7 +377,7 @@ export async function getAuthorPosts(authorId: string): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("author_id", authorId)
     .eq("status", "published")
@@ -378,7 +401,7 @@ export async function getMyPosts(): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("author_id", user.id)
     .order("created_at", { ascending: false });
@@ -502,13 +525,16 @@ export async function signInWithEmailPassword(email: string, password: string) {
   return data;
 }
 
-export async function signUpWithEmailPassword(email: string, password: string) {
+export async function signUpWithEmailPassword(email: string, password: string, username?: string) {
   const trimmedEmail = email.trim();
   const trimmedPassword = password.trim();
 
   if (!trimmedEmail || !trimmedPassword) {
     throw new Error("Enter both your email address and password.");
   }
+
+  const handle = username === undefined ? undefined : normalizeUsername(username);
+  if (handle) await assertUsernameAvailable(handle);
 
   // Without a redirect the confirmation link goes to the project's Site URL,
   // which may belong to another app sharing the project. This URL must also
@@ -517,6 +543,7 @@ export async function signUpWithEmailPassword(email: string, password: string) {
     email: trimmedEmail,
     password: trimmedPassword,
     options: {
+      ...(handle ? { data: { promptlab_username: handle } } : {}),
       emailRedirectTo: new URL(import.meta.env.BASE_URL, window.location.origin).href,
     },
   });

@@ -99,6 +99,7 @@ function Section({
 export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
   const { user, checking, signIn, signUp, signOut } = useAuth();
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const emailRef = useRef<HTMLInputElement>(null);
@@ -146,10 +147,12 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
     }
     setAuthState({ kind: "sending" });
     try {
-      await signUp(address, password);
+      const result = await signUp(address, password, username);
       setAuthState({
         kind: "sent",
-        text: `Check your email at ${address} to confirm your account, then sign in.`,
+        text: result.session
+          ? "Account created. You’re signed in."
+          : `Check your email at ${address} to confirm your account, then sign in.`,
       });
       setPassword("");
     } catch (caught) {
@@ -326,6 +329,27 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                         void (authMode === "signup" ? submitSignUp() : submitSignIn());
                     }}
                   >
+                    {authMode === "signup" && (
+                      <>
+                        <label htmlFor="signup-username">Username</label>
+                        <input
+                          id="signup-username"
+                          className="input"
+                          autoComplete="username"
+                          placeholder="e.g. jason_yan"
+                          aria-describedby="signup-username-help"
+                          required
+                          minLength={3}
+                          maxLength={24}
+                          pattern="[A-Za-z0-9_]{3,24}"
+                          value={username}
+                          onChange={(event) => setUsername(event.target.value)}
+                        />
+                        <small id="signup-username-help" className="signin-note">
+                          Your public handle. Use 3–24 letters, numbers, or underscores.
+                        </small>
+                      </>
+                    )}
                     <input
                         ref={emailRef}
                         className="input"

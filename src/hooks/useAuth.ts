@@ -43,8 +43,8 @@ export function useAuth() {
     await signInWithEmailPassword(email.trim(), password);
   }, []);
 
-  const signUp = useCallback(async (email: string, password: string) => {
-    await signUpWithEmailPassword(email.trim(), password);
+  const signUp = useCallback(async (email: string, password: string, username: string) => {
+    return await signUpWithEmailPassword(email.trim(), password, username);
   }, []);
 
   const signOut = useCallback(async () => {
