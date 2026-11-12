@@ -4640,3 +4640,31 @@ a.btn {
   flex: 1;
   width: auto;
 }
+
+/* Follow / friend actions on a profile ------------------------------------- */
+
+.social-actions,
+.friend-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.social-actions {
+  margin-bottom: 18px;
+}
+
+.friend-requests {
+  margin-bottom: 18px;
+}
+
+.friend-request {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}

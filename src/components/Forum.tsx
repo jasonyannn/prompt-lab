@@ -13,6 +13,17 @@ import {
   subscribeToAuthState,
   updateCurrentProfile,
 } from "../lib/forum";
+import {
+  acceptFriendRequest,
+  followUser,
+  getIncomingRequests,
+  getSocialState,
+  removeFriendship,
+  sendFriendRequest,
+  unfollowUser,
+  type FriendRequest,
+  type SocialState,
+} from "../lib/social";
 import type { AuthorProfile, ForumPost, PostVisibility } from "../types/forum";
 
 export function Forum() {
@@ -37,6 +48,9 @@ export function Forum() {
   const [viewingPosts, setViewingPosts] = useState<ForumPost[]>([]);
   const [viewingSelf, setViewingSelf] = useState(false);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [social, setSocial] = useState<SocialState | null>(null);
+  const [requests, setRequests] = useState<FriendRequest[]>([]);
+  const [socialBusy, setSocialBusy] = useState(false);
 
   useEffect(() => {
     void loadPosts();
@@ -151,10 +165,14 @@ export function Forum() {
     setProfileLoading(true);
     setError(null);
     try {
-      const [profile, authored] = await Promise.all([
+      const [profile, authored, socialState, incoming] = await Promise.all([
         getAuthorProfile(authorId),
         self ? getMyPosts() : getAuthorPosts(authorId),
+        getSocialState(authorId),
+        self ? getIncomingRequests() : Promise.resolve([] as FriendRequest[]),
       ]);
+      setSocial(socialState);
+      setRequests(incoming);
       setViewing(profile);
       setViewingPosts(authored);
       setViewingSelf(self);
@@ -169,6 +187,24 @@ export function Forum() {
     setViewing(null);
     setViewingPosts([]);
     setViewingSelf(false);
+    setSocial(null);
+    setRequests([]);
+  }
+
+  /** Runs one follow/friend action, then reloads the counts and buttons. */
+  async function runSocial(action: () => Promise<void>) {
+    if (!viewing) return;
+    setSocialBusy(true);
+    setError(null);
+    try {
+      await action();
+      setSocial(await getSocialState(viewing.id));
+      if (viewingSelf) setRequests(await getIncomingRequests());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "That did not work.");
+    } finally {
+      setSocialBusy(false);
+    }
   }
 
   async function handleCopyPrompt(post: ForumPost) {
@@ -369,6 +405,18 @@ export function Forum() {
                   <dt>Public prompts</dt>
                   <dd>{viewing.public_post_count}</dd>
                 </div>
+                {social && (
+                  <>
+                    <div>
+                      <dt>Followers</dt>
+                      <dd>{social.followerCount}</dd>
+                    </div>
+                    <div>
+                      <dt>Following</dt>
+                      <dd>{social.followingCount}</dd>
+                    </div>
+                  </>
+                )}
                 {viewingSelf && viewing.private_post_count !== undefined && (
                   <div>
                     <dt>Private</dt>
@@ -377,6 +425,105 @@ export function Forum() {
                 )}
               </dl>
             </div>
+
+            {social && !viewingSelf && (
+              <div className="social-actions">
+                {!user ? (
+                  <p className="profile-edit-note">Sign in to follow people or add them as friends.</p>
+                ) : (
+                  <>
+                    <button
+                      className={social.isFollowing ? "btn btn-ghost" : "btn"}
+                      disabled={socialBusy}
+                      onClick={() =>
+                        void runSocial(() => (social.isFollowing ? unfollowUser(viewing.id) : followUser(viewing.id)))
+                      }
+                    >
+                      {social.isFollowing ? "Following" : "Follow"}
+                    </button>
+                    {social.friendStatus === "none" && (
+                      <button
+                        className="btn btn-ghost"
+                        disabled={socialBusy}
+                        onClick={() => void runSocial(() => sendFriendRequest(viewing.id))}
+                      >
+                        Add friend
+                      </button>
+                    )}
+                    {social.friendStatus === "outgoing" && (
+                      <button
+                        className="btn btn-ghost"
+                        disabled={socialBusy}
+                        onClick={() => void runSocial(() => removeFriendship(social.friendshipId as string))}
+                      >
+                        Request sent · Cancel
+                      </button>
+                    )}
+                    {social.friendStatus === "incoming" && (
+                      <>
+                        <button
+                          className="btn"
+                          disabled={socialBusy}
+                          onClick={() => void runSocial(() => acceptFriendRequest(social.friendshipId as string))}
+                        >
+                          Accept friend request
+                        </button>
+                        <button
+                          className="btn btn-ghost"
+                          disabled={socialBusy}
+                          onClick={() => void runSocial(() => removeFriendship(social.friendshipId as string))}
+                        >
+                          Decline
+                        </button>
+                      </>
+                    )}
+                    {social.friendStatus === "friends" && (
+                      <button
+                        className="btn btn-ghost"
+                        disabled={socialBusy}
+                        onClick={() => void runSocial(() => removeFriendship(social.friendshipId as string))}
+                      >
+                        Friends ✓ · Unfriend
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {viewingSelf && requests.length > 0 && (
+              <div className="friend-requests">
+                <h3 className="profile-section-title">Friend requests</h3>
+                {requests.map((request) => (
+                  <div key={request.id} className="friend-request">
+                    <button className="author-link" onClick={() => void openProfile(request.requester_id)}>
+                      <Avatar
+                        url={request.profile?.avatar_url}
+                        name={getPublicProfileName(request.profile)}
+                        className="forum-author-avatar"
+                      />
+                      {getPublicProfileName(request.profile)}
+                    </button>
+                    <span className="friend-request-actions">
+                      <button
+                        className="btn"
+                        disabled={socialBusy}
+                        onClick={() => void runSocial(() => acceptFriendRequest(request.id))}
+                      >
+                        Accept
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        disabled={socialBusy}
+                        onClick={() => void runSocial(() => removeFriendship(request.id))}
+                      >
+                        Decline
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             {viewingSelf && (
               <div className="profile-edit">
