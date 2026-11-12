@@ -282,6 +282,10 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
             >
               GitHub
             </a>
+            <a className="lp-support" href={SUPPORT_URL} target="_blank" rel="noreferrer">
+              Support
+              <span className="visually-hidden"> Prompt Lab on Ko-fi (opens in a new tab)</span>
+            </a>
           </nav>
 
           <div className="lp-nav-right">
