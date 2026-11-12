@@ -82,7 +82,9 @@ export type ChatMessage = {
 export type OllamaStatus =
   | { state: "checking" }
   | { state: "ready"; models: string[] }
-  | { state: "unavailable"; reason: string };
+  // `webBlocked` means the page itself can never reach a local model (HTTPS
+  // page, http:// Ollama), so retrying is pointless and the UI says so.
+  | { state: "unavailable"; reason: string; webBlocked?: boolean };
 
 /* ------------------------------------------------------------------ *
  * Availability
@@ -98,6 +100,7 @@ export async function checkOllama(): Promise<OllamaStatus> {
   ) {
     return {
       state: "unavailable",
+      webBlocked: true,
       reason:
         "This page is served over HTTPS, so the browser blocks requests to a local http:// Ollama. Run Prompt Lab locally to use the built-in agent.",
     };

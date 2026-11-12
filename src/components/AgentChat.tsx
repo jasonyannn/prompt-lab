@@ -379,6 +379,27 @@ export function AgentChat({ agents }: Props) {
   }
 
   if (!usingHosted && status.state === "unavailable") {
+    if (status.webBlocked) {
+      return (
+        <div className="panel-body agent-unavailable">
+          <h3>The built-in agent isn't available on the web version</h3>
+          <p>
+            It needs a model that runs on your computer, and a browser can't
+            reach one from a secure web page. Everything else works here.
+          </p>
+          <ul>
+            <li>Browse the Discover catalogue and save prompts to your library.</li>
+            <li>Write, score and refine prompts in Prompt Studio.</li>
+            <li>Share and read prompts in the forum.</li>
+            <li>Use your browser's own AI through the registered WebMCP tools.</li>
+          </ul>
+          <p className="hint">
+            To chat with the built-in agent, run Prompt Lab locally with Ollama.
+          </p>
+        </div>
+      );
+    }
+
     return (
       <div className="panel-body">
         <div className="notice">

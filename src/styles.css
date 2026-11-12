@@ -4191,3 +4191,30 @@ html[data-underline-links="on"] a {
     margin-left: 0;
   }
 }
+
+/* Agent unavailable on the web build ---------------------------------------- */
+
+.agent-unavailable {
+  display: grid;
+  gap: 12px;
+}
+
+.agent-unavailable h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.agent-unavailable p {
+  margin: 0;
+  color: var(--text-dim);
+}
+
+.agent-unavailable ul {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-dim);
+  display: grid;
+  gap: 6px;
+}
