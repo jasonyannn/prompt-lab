@@ -31,6 +31,7 @@ export type ForumPost = {
   profiles?: {
     display_name?: string | null;
     username?: string | null;
+    avatar_url?: string | null;
   } | null;
 };
 

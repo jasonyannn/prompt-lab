@@ -1,3 +1,5 @@
+import { Avatar } from "./Avatar";
+import { uploadProfilePhoto, removeProfilePhoto } from "../lib/profilePhoto";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePrompts } from "../hooks/usePrompts";
 import { useAgents } from "../hooks/useAgents";
@@ -38,6 +40,11 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
     "discover"
   );
   const [accountDisplayName, setAccountDisplayName] = useState("");
+  const [accountAvatar, setAccountAvatar] = useState<string | null>(null);
+  const [savingPhoto, setSavingPhoto] = useState(false);
+  const [photoError, setPhotoError] = useState<string | null>(null);
+  const [photoMessage, setPhotoMessage] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const [accountUsername, setAccountUsername] = useState<string | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
@@ -111,6 +118,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
     if (!user) {
       setAccountDisplayName("");
       setAccountUsername(null);
+      setAccountAvatar(null);
       setAccountMessage(null);
       return;
     }
@@ -124,6 +132,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
         if (!active) return;
         setAccountDisplayName(profile?.display_name ?? "");
         setAccountUsername(profile?.username ?? null);
+        setAccountAvatar(profile?.avatar_url ?? null);
         setAccountError(null);
       } catch {
         if (!active) return;
@@ -133,6 +142,21 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
     })();
     return () => { active = false; };
   }, [user, view]);
+
+  async function handleProfilePhoto(file?: File) {
+    setSavingPhoto(true);
+    setPhotoError(null);
+    setPhotoMessage(null);
+    try {
+      const profile = file ? await uploadProfilePhoto(file) : await removeProfilePhoto();
+      setAccountAvatar(profile.avatar_url ?? null);
+      setPhotoMessage(file ? "Photo updated" : "Photo removed");
+    } catch (caught) {
+      setPhotoError(caught instanceof Error ? caught.message : "Could not update your photo.");
+    } finally {
+      setSavingPhoto(false);
+    }
+  }
 
   async function handleSaveAccountProfile() {
     if (!user) {
@@ -338,15 +362,37 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
           ) : (
             <div className="panel account-panel">
               <div className="account-identity">
-                <span className="account-avatar" aria-hidden="true">
-                  {(accountDisplayName.trim() || user.email || "?").slice(0, 1).toUpperCase()}
-                </span>
+                <Avatar url={accountAvatar} name={publicName} />
                 <div>
                   <span className="account-label">Account email</span>
                   <p>{user.email ?? "Signed-in account"}</p>
                   <button className="account-username-link" onClick={() => setView("settings")}>
                     {accountUsername ? `@${accountUsername} · Edit username` : "Choose a username in Settings"}
                   </button>
+                </div>
+              </div>
+              <div className="account-photo-controls">
+                <div>
+                  <strong>Profile photo</strong>
+                  <p>Public on your profile and forum posts. JPG, PNG, or WebP up to 5 MB; cropped to a square.</p>
+                </div>
+                <div className="account-photo-actions">
+                  <input ref={photoInputRef} type="file" accept="image/jpeg,image/png,image/webp" hidden
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void handleProfilePhoto(file);
+                    }} />
+                  <button className="btn btn-quiet" disabled={savingPhoto}
+                    onClick={() => photoInputRef.current?.click()}>
+                    {savingPhoto ? "Updating photo…" : accountAvatar ? "Change photo" : "Upload photo"}
+                  </button>
+                  {accountAvatar && <button className="btn btn-quiet" disabled={savingPhoto}
+                    onClick={() => void handleProfilePhoto()}>Remove photo</button>}
+                </div>
+                <div role="status" aria-live="polite">
+                  {photoError && <span className="account-feedback is-bad">{photoError}</span>}
+                  {photoMessage && <span className="account-feedback is-good">{photoMessage}</span>}
                 </div>
               </div>
               <div className="account-content">
@@ -387,9 +433,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
                 <aside className="account-preview" aria-label="Forum name preview">
                   <span className="account-label">Forum preview</span>
                   <div className="account-preview-byline">
-                    <span className="account-avatar account-avatar-small" aria-hidden="true">
-                      {(accountDisplayName.trim() || accountUsername || "Anonymous").slice(0, 1).toUpperCase()}
-                    </span>
+                    <Avatar url={accountAvatar} name={publicName} className="account-avatar account-avatar-small" />
                     <div>
                       <strong>{publicName}</strong>
                       <span>Post author</span>

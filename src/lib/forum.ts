@@ -39,7 +39,7 @@ export async function getPublishedPosts(): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username, avatar_url), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("status", "published")
     .eq("visibility", "public")
@@ -61,7 +61,7 @@ export async function searchForumPosts(
   let request = supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username, avatar_url), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("status", "published");
 
@@ -96,7 +96,7 @@ export async function getForumPostById(postId: string): Promise<ForumPost | null
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username, avatar_url), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("id", postId)
     .eq("status", "published")
@@ -378,7 +378,7 @@ export async function getAuthorPosts(authorId: string): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username, avatar_url), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("author_id", authorId)
     .eq("status", "published")
@@ -402,7 +402,7 @@ export async function getMyPosts(): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:forum_profiles!author_id(display_name, username), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name, username, avatar_url), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("author_id", user.id)
     .order("created_at", { ascending: false });

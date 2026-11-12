@@ -1,3 +1,4 @@
+import { Avatar } from "./Avatar";
 import { useEffect, useState } from "react";
 import {
   createForumPost,
@@ -339,9 +340,7 @@ export function Forum() {
             </div>
 
             <div className="profile-card">
-              <span className="profile-avatar" aria-hidden="true">
-                {(viewing.display_name ?? "A").slice(0, 2).toUpperCase()}
-              </span>
+              <Avatar url={viewing.avatar_url} name={getPublicProfileName(viewing)} className="profile-avatar" />
               <div className="profile-identity">
                 <strong>{getPublicProfileName(viewing)}</strong>
                 {viewing.created_at && (
@@ -472,6 +471,7 @@ export function Forum() {
                       onClick={() => void openProfile(post.author_id as string)}
                       title="View this author's profile"
                     >
+                      <Avatar url={post.profiles?.avatar_url} name={getPublicProfileName(post.profiles)} className="forum-author-avatar" />
                       {getPublicProfileName(post.profiles)}
                     </button>
                   ) : (
