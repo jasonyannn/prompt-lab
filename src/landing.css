@@ -713,6 +713,68 @@
   padding-top: 0;
 }
 
+.lp-intro {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(300px, 1fr);
+  align-items: center;
+  gap: 40px;
+  padding: 60px 0;
+}
+
+.lp-intro .hero {
+  padding: 0;
+  text-align: left;
+}
+
+.lp-intro .display {
+  font-size: clamp(36px, 4.5vw, 64px);
+}
+
+.lp-intro .hero-cta,
+.lp-intro .stat-row {
+  justify-content: flex-start;
+}
+
+.signin-title {
+  margin: 0;
+  font-size: 24px;
+}
+
+.lp-intro form.signin-row {
+  flex-direction: column;
+}
+
+.lp-intro .signin-note {
+  color: var(--text-dim);
+}
+
+@media (max-width: 900px) {
+  .lp-intro {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 32px 0;
+    gap: 28px;
+  }
+
+  .lp-intro .signin-section {
+    order: -1;
+  }
+
+  .lp-nav-right .status {
+    display: none;
+  }
+}
+
+@media (max-width: 560px) {
+  .lp-nav-inner {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+
+  .lp-intro .signin-row .input {
+    min-width: 0;
+  }
+}
+
 /* Anchor jumps land below the sticky nav rather than under it. */
 .signin-card {
   display: grid;

@@ -98,12 +98,15 @@ function Section({
 
 export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
   const { user, checking, signIn, signUp, signOut } = useAuth();
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const emailRef = useRef<HTMLInputElement>(null);
 
   /** Scroll to the card *and* focus the field, so one click is enough. */
-  function focusSignIn() {
+  function focusSignIn(mode: "signin" | "signup" = "signin") {
+    setAuthMode(mode);
+    setAuthState({ kind: "idle" });
     document.getElementById("signin")?.scrollIntoView({ behavior: "smooth", block: "center" });
     // Focus once the smooth scroll settles, or it fights the animation.
     window.setTimeout(() => emailRef.current?.focus(), 420);
@@ -146,7 +149,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
       await signUp(address, password);
       setAuthState({
         kind: "sent",
-        text: `Account created for ${address}. You can now sign in with the same email and password.`,
+        text: `Check your email at ${address} to confirm your account, then sign in.`,
       });
       setPassword("");
     } catch (caught) {
@@ -226,17 +229,20 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                     ? `WebMCP Ready · ${webmcp.tools.length}`
                     : "MCP endpoint offline"}
             </span>
-            <button className="btn btn-quiet" onClick={focusSignIn}>
+            <button className="btn btn-quiet" onClick={() => focusSignIn()}>
               {user ? (user.email ?? "Account") : "Sign in"}
             </button>
-            <button className="btn btn-primary" onClick={onEnter}>
-              Open the app
-            </button>
+            {!user && (
+              <button className="btn btn-primary" onClick={() => focusSignIn("signup")}>
+                Create account
+              </button>
+            )}
           </div>
         </div>
       </header>
 
       <main className="lp-main">
+        <div className="lp-intro">
         {/* Hero ------------------------------------------------------- */}
         <Section className="hero">
           <span className="eyebrow">
@@ -258,18 +264,15 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
           </p>
 
           <div className="hero-cta">
-            <button className="btn btn-primary btn-lg" onClick={onEnter}>
-              Open the app →
+            <button className="btn btn-primary btn-lg" onClick={user ? onEnter : () => focusSignIn("signup")}>
+              {user ? "Open the app →" : "Create account"}
             </button>
-            <button className="btn btn-lg btn-quiet" onClick={focusSignIn}>
+            <button className="btn btn-lg btn-quiet" onClick={() => focusSignIn()}>
               {user ? "Your account" : "Sign in"}
             </button>
-            <a className="btn btn-lg btn-quiet" href="#tools">
-              Explore the tools
-            </a>
-            <a className="btn btn-lg btn-quiet" href="#connect">
-              Connect an agent
-            </a>
+            <button className="btn btn-lg btn-quiet" onClick={onEnter}>
+              Browse without an account →
+            </button>
           </div>
 
           <dl className="stat-row">
@@ -289,7 +292,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
         </Section>
 
         {/* Sign in --------------------------------------------------- */}
-        <Section className="signin-section">
+        <section className="signin-section" aria-label="Your account">
             <div className="signin-card" id="signin">
               {checking ? (
                 <p className="signin-note">Checking your session…</p>
@@ -311,18 +314,16 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                 </>
               ) : (
                 <>
-                  <strong>Sign in or create an account</strong>
+                  <h3 className="signin-title">{authMode === "signup" ? "Create your account" : "Welcome back"}</h3>
                   <p className="signin-note">
-                    Optional — everything in Prompt Lab works signed out, and you
-                    can post to the forum anonymously. Signing in just lets posts
-                    carry your name. This uses Supabase email/password auth instead
-                    of a reset-by-email magic link.
+                    Sign in to publish forum posts under your name. You can browse
+                    the library without an account.
                   </p>
                   <form
                     className="signin-row"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        void submitSignIn();
+                        void (authMode === "signup" ? submitSignUp() : submitSignIn());
                     }}
                   >
                     <input
@@ -338,7 +339,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                     <input
                         className="input"
                         type="password"
-                        autoComplete="current-password"
+                        autoComplete={authMode === "signup" ? "new-password" : "current-password"}
                         aria-label="Password"
                         placeholder="Password"
                         value={password}
@@ -349,15 +350,17 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                         type="submit"
                         disabled={authState.kind === "sending"}
                     >
-                        {authState.kind === "sending" ? "Signing in…" : "Sign in"}
+                        {authState.kind === "sending"
+                          ? (authMode === "signup" ? "Creating account…" : "Signing in…")
+                          : (authMode === "signup" ? "Create account" : "Sign in")}
                     </button>
                     <button
                         className="btn btn-quiet"
                         type="button"
-                        onClick={() => void submitSignUp()}
+                        onClick={() => focusSignIn(authMode === "signup" ? "signin" : "signup")}
                         disabled={authState.kind === "sending"}
                     >
-                        Create account
+                        {authMode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}
                     </button>
                   </form>
                 </>
@@ -371,7 +374,8 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                 </p>
               )}
             </div>
-        </Section>
+        </section>
+        </div>
 
         {/* Remote MCP ------------------------------------------------ */}
         <Section className="remote-connect">
