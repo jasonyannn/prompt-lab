@@ -38,6 +38,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
     "discover"
   );
   const [accountDisplayName, setAccountDisplayName] = useState("");
+  const [accountUsername, setAccountUsername] = useState<string | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
   const [savingAccount, setSavingAccount] = useState(false);
@@ -104,24 +105,34 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   }, [prompts, selectedId]);
 
   const selected = prompts.find((prompt) => prompt.id === selectedId) ?? null;
+  const publicName = getPublicProfileName({ display_name: accountDisplayName, username: accountUsername });
 
   useEffect(() => {
     if (!user) {
       setAccountDisplayName("");
+      setAccountUsername(null);
       setAccountMessage(null);
       return;
     }
 
+    if (view !== "account") return;
+    let active = true;
+
     void (async () => {
       try {
         const profile = await getCurrentProfile();
+        if (!active) return;
         setAccountDisplayName(profile?.display_name ?? "");
+        setAccountUsername(profile?.username ?? null);
         setAccountError(null);
       } catch {
+        if (!active) return;
         setAccountDisplayName("");
+        setAccountUsername(null);
       }
     })();
-  }, [user]);
+    return () => { active = false; };
+  }, [user, view]);
 
   async function handleSaveAccountProfile() {
     if (!user) {
@@ -333,6 +344,9 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
                 <div>
                   <span className="account-label">Account email</span>
                   <p>{user.email ?? "Signed-in account"}</p>
+                  <button className="account-username-link" onClick={() => setView("settings")}>
+                    {accountUsername ? `@${accountUsername} · Edit username` : "Choose a username in Settings"}
+                  </button>
                 </div>
               </div>
               <div className="account-content">
@@ -341,7 +355,11 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
                   void handleSaveAccountProfile();
                 }}>
                   <label htmlFor="account-display-name">Display name</label>
-                  <p id="account-name-help">The name shown alongside your forum posts. Leave blank to appear as Anonymous.</p>
+                  <p id="account-name-help">
+                    The name shown alongside your forum posts. {accountUsername
+                      ? "Leave blank to use your username."
+                      : "Leave blank to appear as Anonymous."}
+                  </p>
                   <input
                     id="account-display-name"
                     className="input"
@@ -370,10 +388,10 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
                   <span className="account-label">Forum preview</span>
                   <div className="account-preview-byline">
                     <span className="account-avatar account-avatar-small" aria-hidden="true">
-                      {(accountDisplayName.trim() || "Anonymous").slice(0, 1).toUpperCase()}
+                      {(accountDisplayName.trim() || accountUsername || "Anonymous").slice(0, 1).toUpperCase()}
                     </span>
                     <div>
-                      <strong>{accountDisplayName.trim() || "Anonymous"}</strong>
+                      <strong>{publicName}</strong>
                       <span>Post author</span>
                     </div>
                   </div>

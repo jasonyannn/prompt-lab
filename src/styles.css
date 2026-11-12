@@ -164,6 +164,16 @@ select {
 .account-identity > div { min-width: 0; }
 .account-identity p { margin: 2px 0 0; overflow-wrap: anywhere; font-weight: 500; }
 .account-label { color: var(--text-dim); font-size: 12px; }
+.account-username-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+.account-username-link:hover { color: var(--text); text-decoration: underline; }
 .account-avatar {
   display: grid;
   place-items: center;

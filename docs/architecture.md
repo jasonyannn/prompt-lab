@@ -83,7 +83,9 @@ entirely from RLS in `supabase/migrations/`:
   their own;
 - anonymous inserts are forced to `public` + `published` with no author;
 - like totals are maintained by a trigger and are read-only to clients;
-- a profile row is created by trigger on sign-up.
+- Prompt Lab signups reserve a unique username in their forum profile via a
+  trigger scoped to the `promptlab_username` metadata key. Existing users can
+  choose a username in Settings; owner-only profile RLS protects changes.
 
 ## Retrieval
 
