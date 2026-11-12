@@ -821,6 +821,37 @@
   padding: 10px 13px;
 }
 
+.password-field {
+  position: relative;
+  flex: 1;
+  min-width: 220px;
+  display: flex;
+}
+
+.password-field .input {
+  width: 100%;
+  padding-right: 42px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 40px;
+  display: grid;
+  place-items: center;
+  background: none;
+  border: 0;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.password-toggle:hover,
+.password-toggle:focus-visible {
+  color: var(--text);
+}
+
 @media (max-width: 560px) {
   .signin-row {
     flex-direction: column;
