@@ -552,21 +552,31 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                   ? "Endpoint online"
                   : remoteMcp.checking
                     ? "Checking endpoint…"
-                    : "Available after Sites deployment"}
+                    : "Not available on this version"}
               </span>
               <span>{remoteMcp.transport}</span>
             </div>
-            <div className="endpoint-url-row">
-              <code>{remoteMcp.endpoint}</code>
-              <button className="btn btn-primary" onClick={copyEndpoint}>
-                {copiedEndpoint ? "Copied ✓" : "Copy URL"}
-              </button>
-            </div>
-            <div className="endpoint-meta">
-              <span>{remoteMcp.tools.length} remote tools</span>
-              <span>{remoteMcp.protocolVersions.join(" + ")}</span>
-              <span>Version history included</span>
-            </div>
+            {remoteMcp.ready || remoteMcp.checking ? (
+              <div className="endpoint-url-row">
+                <code>{remoteMcp.endpoint}</code>
+                <button className="btn btn-primary" onClick={copyEndpoint} disabled={!remoteMcp.ready}>
+                  {copiedEndpoint ? "Copied ✓" : "Copy URL"}
+                </button>
+              </div>
+            ) : (
+              <p className="endpoint-offline">
+                The remote agent endpoint runs on the hosted server build, which
+                this version doesn't include. In-browser WebMCP tools still work
+                in supported browsers.
+              </p>
+            )}
+            {remoteMcp.ready && (
+              <div className="endpoint-meta">
+                <span>{remoteMcp.tools.length} remote tools</span>
+                <span>{remoteMcp.protocolVersions.join(" + ")}</span>
+                <span>Version history included</span>
+              </div>
+            )}
           </div>
         </Section>
 

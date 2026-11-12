@@ -30,6 +30,8 @@ export function Forum() {
   const [profileError, setProfileError] = useState<string | null>(null);
   const [savingProfile, setSavingProfile] = useState(false);
   const [visibility, setVisibility] = useState<PostVisibility>("public");
+  const [composing, setComposing] = useState(false);
+  const [myUsername, setMyUsername] = useState<string | null>(null);
   /** null = the public feed; otherwise we are looking at one author. */
   const [viewing, setViewing] = useState<AuthorProfile | null>(null);
   const [viewingPosts, setViewingPosts] = useState<ForumPost[]>([]);
@@ -43,9 +45,6 @@ export function Forum() {
     const unsubscribe = subscribeToAuthState((nextUser) => {
       setUser(nextUser);
       setAnonymous(false);
-      if (nextUser) {
-        setMessage("Signed in successfully.");
-      }
     });
 
     return () => unsubscribe();
@@ -59,12 +58,15 @@ export function Forum() {
       if (nextUser) {
         const profile = await getCurrentProfile();
         setProfileDisplayName(profile?.display_name ?? "");
+        setMyUsername(profile?.username ?? null);
       } else {
         setProfileDisplayName("");
+        setMyUsername(null);
       }
     } catch {
       setUser(null);
       setProfileDisplayName("");
+      setMyUsername(null);
     }
   }
 
@@ -126,6 +128,7 @@ export function Forum() {
       });
       setTitle("");
       setContent("");
+      setComposing(false);
       setCategory("General");
       setAnonymous(true);
       const wasPrivate = user && !anonymous && visibility === "private";
@@ -228,8 +231,11 @@ export function Forum() {
         <div className="forum-identity">
           {user ? (
             <p>
-              Posting as <strong>{user.email ?? "your account"}</strong>. Sign out
-              from the top bar.
+              Posting as{" "}
+              <strong>
+                {profileDisplayName || (myUsername ? `@${myUsername}` : "your account")}
+              </strong>
+              .
             </p>
           ) : (
             <>
@@ -250,7 +256,13 @@ export function Forum() {
         </div>
         )}
 
-        {!viewing && (
+        {!viewing && !composing && (
+          <button className="forum-compose-cta" type="button" onClick={() => setComposing(true)}>
+            Share a prompt with the community
+          </button>
+        )}
+
+        {!viewing && composing && (
         <div className="forum-compose">
 
           <input
@@ -298,6 +310,9 @@ export function Forum() {
           )}
 
           <div className="forum-actions">
+            <button className="btn" type="button" onClick={() => setComposing(false)} disabled={loading}>
+              Cancel
+            </button>
             <button
               className="btn btn-primary"
               onClick={() => void handleCreatePost()}
