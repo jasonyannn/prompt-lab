@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import {
   getSessionUser,
+  requestPasswordReset,
+  subscribeToPasswordRecovery,
+  updatePassword,
   signInWithEmailPassword,
   signOut as signOutRequest,
   signUpWithEmailPassword,
@@ -17,6 +20,7 @@ import {
 export function useAuth() {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [checking, setChecking] = useState(true);
+  const [recovering, setRecovering] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -33,9 +37,11 @@ export function useAuth() {
       });
 
     const unsubscribe = subscribeToAuthState((next) => setUser(next));
+    const unsubscribeRecovery = subscribeToPasswordRecovery(() => setRecovering(true));
     return () => {
       active = false;
       unsubscribe();
+      unsubscribeRecovery();
     };
   }, []);
 
@@ -52,5 +58,14 @@ export function useAuth() {
     setUser(null);
   }, []);
 
-  return { user, checking, signIn, signUp, signOut };
+  const sendResetEmail = useCallback(async (email: string) => {
+    await requestPasswordReset(email);
+  }, []);
+
+  const setNewPassword = useCallback(async (password: string) => {
+    await updatePassword(password);
+    setRecovering(false);
+  }, []);
+
+  return { user, checking, recovering, signIn, signUp, signOut, sendResetEmail, setNewPassword };
 }

@@ -556,6 +556,37 @@ export async function signUpWithEmailPassword(email: string, password: string, u
   return data;
 }
 
+/**
+ * Emails a reset link. The link must land on a URL listed under
+ * Authentication → URL Configuration → Redirect URLs, same as sign-up.
+ */
+export async function requestPasswordReset(email: string) {
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) throw new Error("Enter your email address first.");
+
+  const { error } = await supabase.auth.resetPasswordForEmail(trimmedEmail, {
+    redirectTo: new URL(import.meta.env.BASE_URL, window.location.origin).href,
+  });
+  if (error) throw new Error(`Could not send the reset email: ${describeAuthError(error)}`);
+}
+
+/** Runs after the reset link signed the user in; the new password replaces the old one. */
+export async function updatePassword(password: string) {
+  const next = password.trim();
+  if (next.length < 6) throw new Error("Use at least 6 characters for your new password.");
+
+  const { error } = await supabase.auth.updateUser({ password: next });
+  if (error) throw new Error(`Could not update your password: ${describeAuthError(error)}`);
+}
+
+/** Fires when the user arrives from a password-reset email link. */
+export function subscribeToPasswordRecovery(callback: () => void) {
+  const { data } = supabase.auth.onAuthStateChange((event) => {
+    if (event === "PASSWORD_RECOVERY") callback();
+  });
+  return () => data.subscription.unsubscribe();
+}
+
 export async function signOut() {
   const { error } = await supabase.auth.signOut();
   if (error) throw error;

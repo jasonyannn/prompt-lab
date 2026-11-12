@@ -97,8 +97,8 @@ function Section({
 }
 
 export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
-  const { user, checking, signIn, signUp, signOut } = useAuth();
-  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const { user, checking, recovering, signIn, signUp, signOut, sendResetEmail, setNewPassword } = useAuth();
+  const [authMode, setAuthMode] = useState<"signin" | "signup" | "forgot">("signin");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -106,7 +106,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
   const emailRef = useRef<HTMLInputElement>(null);
 
   /** Scroll to the card *and* focus the field, so one click is enough. */
-  function focusSignIn(mode: "signin" | "signup" = "signin") {
+  function focusSignIn(mode: "signin" | "signup" | "forgot" = "signin") {
     setAuthMode(mode);
     setAuthState({ kind: "idle" });
     document.getElementById("signin")?.scrollIntoView({ behavior: "smooth", block: "center" });
@@ -136,6 +136,45 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
       setAuthState({
         kind: "error",
         text: caught instanceof Error ? caught.message : "Could not sign in.",
+      });
+    }
+  }
+
+  async function submitReset() {
+    const address = email.trim();
+    if (!address) {
+      setAuthState({ kind: "error", text: "Enter your email address first." });
+      return;
+    }
+    setAuthState({ kind: "sending" });
+    try {
+      await sendResetEmail(address);
+      setAuthState({
+        kind: "sent",
+        text: `If ${address} has an account, a reset link is on its way. Check your inbox and spam.`,
+      });
+    } catch (caught) {
+      setAuthState({
+        kind: "error",
+        text: caught instanceof Error ? caught.message : "Could not send the reset email.",
+      });
+    }
+  }
+
+  async function submitNewPassword() {
+    if (!password.trim()) {
+      setAuthState({ kind: "error", text: "Enter a new password." });
+      return;
+    }
+    setAuthState({ kind: "sending" });
+    try {
+      await setNewPassword(password);
+      setAuthState({ kind: "sent", text: "Password updated. You're signed in." });
+      setPassword("");
+    } catch (caught) {
+      setAuthState({
+        kind: "error",
+        text: caught instanceof Error ? caught.message : "Could not update your password.",
       });
     }
   }
@@ -187,6 +226,33 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
       /* The endpoint remains visible and selectable when clipboard access is blocked. */
     }
   }
+
+  const passwordField = (
+        <div className="password-field">
+          <input
+              className="input"
+              type={showPassword ? "text" : "password"}
+              autoComplete={authMode === "signup" || recovering ? "new-password" : "current-password"}
+              aria-label="Password"
+              placeholder="Password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+          />
+          <button
+              className="password-toggle"
+              type="button"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              aria-pressed={showPassword}
+              onClick={() => setShowPassword((value) => !value)}
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
+              <circle cx="12" cy="12" r="3" />
+              {showPassword && <path d="M4 4l16 16" />}
+            </svg>
+          </button>
+        </div>
+  );
 
   return (
     <div className="landing">
@@ -297,6 +363,23 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
             <div className="signin-card" id="signin">
               {checking ? (
                 <p className="signin-note">Checking your session…</p>
+              ) : recovering ? (
+                <>
+                  <h3 className="signin-title">Set a new password</h3>
+                  <p className="signin-note">Choose a new password for your account.</p>
+                  <form
+                    className="signin-row"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void submitNewPassword();
+                    }}
+                  >
+                    {passwordField}
+                    <button className="btn btn-primary" type="submit" disabled={authState.kind === "sending"}>
+                      {authState.kind === "sending" ? "Saving…" : "Save new password"}
+                    </button>
+                  </form>
+                </>
               ) : user ? (
                 <>
                   <strong>Signed in as {user.email ?? "your account"}</strong>
@@ -315,7 +398,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                 </>
               ) : (
                 <>
-                  <h3 className="signin-title">{authMode === "signup" ? "Create your account" : "Welcome back"}</h3>
+                  <h3 className="signin-title">{authMode === "signup" ? "Create your account" : authMode === "forgot" ? "Reset your password" : "Welcome back"}</h3>
                   <p className="signin-note">
                     Sign in or create an account to open the app and publish forum
                     posts under your name.
@@ -324,7 +407,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                     className="signin-row"
                     onSubmit={(event) => {
                         event.preventDefault();
-                        void (authMode === "signup" ? submitSignUp() : submitSignIn());
+                        void (authMode === "signup" ? submitSignUp() : authMode === "forgot" ? submitReset() : submitSignIn());
                     }}
                   >
                     {authMode === "signup" && (
@@ -358,46 +441,33 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                         value={email}
                         onChange={(event) => setEmail(event.target.value)}
                     />
-                    <div className="password-field">
-                      <input
-                          className="input"
-                          type={showPassword ? "text" : "password"}
-                          autoComplete={authMode === "signup" ? "new-password" : "current-password"}
-                          aria-label="Password"
-                          placeholder="Password"
-                          value={password}
-                          onChange={(event) => setPassword(event.target.value)}
-                      />
-                      <button
-                          className="password-toggle"
-                          type="button"
-                          aria-label={showPassword ? "Hide password" : "Show password"}
-                          aria-pressed={showPassword}
-                          onClick={() => setShowPassword((value) => !value)}
-                      >
-                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                          <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z" />
-                          <circle cx="12" cy="12" r="3" />
-                          {showPassword && <path d="M4 4l16 16" />}
-                        </svg>
-                      </button>
-                    </div>
+                    {authMode !== "forgot" && passwordField}
                     <button
                         className="btn btn-primary"
                         type="submit"
                         disabled={authState.kind === "sending"}
                     >
                         {authState.kind === "sending"
-                          ? (authMode === "signup" ? "Creating account…" : "Signing in…")
-                          : (authMode === "signup" ? "Create account" : "Sign in")}
+                          ? (authMode === "signup" ? "Creating account…" : authMode === "forgot" ? "Sending…" : "Signing in…")
+                          : (authMode === "signup" ? "Create account" : authMode === "forgot" ? "Send reset link" : "Sign in")}
                     </button>
+                    {authMode === "signin" && (
+                      <button
+                          className="btn btn-quiet"
+                          type="button"
+                          onClick={() => focusSignIn("forgot")}
+                          disabled={authState.kind === "sending"}
+                      >
+                          Forgot password?
+                      </button>
+                    )}
                     <button
                         className="btn btn-quiet"
                         type="button"
-                        onClick={() => focusSignIn(authMode === "signup" ? "signin" : "signup")}
+                        onClick={() => focusSignIn(authMode === "signin" ? "signup" : "signin")}
                         disabled={authState.kind === "sending"}
                     >
-                        {authMode === "signup" ? "Already have an account? Sign in" : "New here? Create an account"}
+                        {authMode === "signin" ? "New here? Create an account" : authMode === "forgot" ? "Back to sign in" : "Already have an account? Sign in"}
                     </button>
                   </form>
                 </>
