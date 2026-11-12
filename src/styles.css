@@ -4377,3 +4377,7 @@ html[data-underline-links="on"] a {
 .account-page {
   padding-top: 28px;
 }
+
+a.btn {
+  text-decoration: none;
+}

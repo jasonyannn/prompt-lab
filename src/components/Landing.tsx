@@ -663,6 +663,9 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
         >
           Source (AGPL-3.0)
         </a>
+        <a href="https://ko-fi.com/officialpromptlab" target="_blank" rel="noreferrer">
+          Support on Ko-fi
+        </a>
       </footer>
     </div>
   );

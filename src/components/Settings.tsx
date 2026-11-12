@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useSettings } from "../hooks/useSettings";
 import { LANGUAGES } from "../lib/i18n";
 import { UsernameSettings } from "./UsernameSettings";
+
+export const SUPPORT_URL = "https://ko-fi.com/officialpromptlab";
 import type {
   ContrastMode,
   FontChoice,
@@ -233,6 +235,23 @@ export function Settings({ onExport, onImport }: Props) {
               {notice}
             </p>
           )}
+        </div>
+      </section>
+
+      <section className="panel settings-panel" aria-labelledby="support-heading">
+        <div className="panel-head">
+          <h2 id="support-heading">Support Prompt Lab</h2>
+        </div>
+        <div className="panel-body">
+          <p className="settings-note">
+            Prompt Lab is free to use. If it's useful to you, a small donation helps
+            pay for hosting and keeps development going.
+          </p>
+          <div className="settings-actions">
+            <a className="btn" href={SUPPORT_URL} target="_blank" rel="noreferrer">
+              Support on Ko-fi
+            </a>
+          </div>
         </div>
       </section>
     </div>
