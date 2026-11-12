@@ -4,6 +4,7 @@ import { cropRect, defaultCrop, MAX_ZOOM, MIN_ZOOM, type CropView } from "../lib
 type Props = {
   file: File;
   saving: boolean;
+  error?: string | null;
   onCancel: () => void;
   onSave: (crop: CropView) => void;
 };
@@ -13,7 +14,7 @@ type Props = {
  * slider / wheel / +- keys to zoom. The maths lives in `cropRect`, which the
  * upload uses too, so the preview and the saved image always agree.
  */
-export function PhotoCropper({ file, saving, onCancel, onSave }: Props) {
+export function PhotoCropper({ file, saving, error, onCancel, onSave }: Props) {
   const titleId = useId();
   const viewportRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ x: number; y: number; centerX: number; centerY: number } | null>(null);
@@ -191,6 +192,8 @@ export function PhotoCropper({ file, saving, onCancel, onSave }: Props) {
             +
           </button>
         </div>
+
+        {error && <p className="cropper-error" role="alert">{error}</p>}
 
         <div className="modal-actions">
           <button

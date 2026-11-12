@@ -522,6 +522,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
         <PhotoCropper
           file={cropFile}
           saving={savingPhoto}
+          error={photoError}
           onCancel={() => setCropFile(null)}
           onSave={(crop) => void handleProfilePhoto(cropFile, crop)}
         />
