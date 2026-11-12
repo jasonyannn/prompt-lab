@@ -314,55 +314,74 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
       ) : view === "forum" ? (
         <Forum />
       ) : view === "account" ? (
-        <section className="panel forum-panel">
-          <div className="panel-head">
-            <h2>Your Account</h2>
-          </div>
-
-          <div className="panel-body">
-            {!user ? (
-              <p className="empty">
-                You’re not signed in yet. Sign in from the home page to manage your public profile.
-              </p>
-            ) : (
-              <div className="forum-auth-box">
-                <p>
-                  Signed in as <strong>{user.email ?? "your account"}</strong>
-                </p>
-                <p>Choose a public display name that appears on forum posts.</p>
-
-                <div className="forum-actions">
-                  <input
-                    className="input"
-                    placeholder="Display name"
-                    value={accountDisplayName}
-                    onChange={(event) => setAccountDisplayName(event.target.value)}
-                  />
-                  <button
-                    className="btn btn-primary"
-                    onClick={() => void handleSaveAccountProfile()}
-                    disabled={savingAccount}
-                  >
-                    {savingAccount ? "Saving…" : "Save display name"}
-                  </button>
+        <section className="account-page" aria-labelledby="account-title">
+          <header className="account-heading">
+            <h2 id="account-title">Profile</h2>
+            <p>Manage how you appear in the Prompt Lab forum.</p>
+          </header>
+          {!user ? (
+            <div className="panel account-signed-out">
+              <p>Sign in to manage your public profile.</p>
+              <button className="btn btn-primary" onClick={onHome}>Go to sign in</button>
+            </div>
+          ) : (
+            <div className="panel account-panel">
+              <div className="account-identity">
+                <span className="account-avatar" aria-hidden="true">
+                  {(accountDisplayName.trim() || user.email || "?").slice(0, 1).toUpperCase()}
+                </span>
+                <div>
+                  <span className="account-label">Account email</span>
+                  <p>{user.email ?? "Signed-in account"}</p>
                 </div>
-
-                {accountMessage && (
-                  <p className="notice is-good">
-                    <strong>Profile updated</strong>
-                    <span>{accountMessage}</span>
-                  </p>
-                )}
-
-                {accountError && (
-                  <p className="notice is-bad">
-                    <strong>Profile error</strong>
-                    <span>{accountError}</span>
-                  </p>
-                )}
               </div>
-            )}
-          </div>
+              <div className="account-content">
+                <form className="account-form" onSubmit={(event) => {
+                  event.preventDefault();
+                  void handleSaveAccountProfile();
+                }}>
+                  <label htmlFor="account-display-name">Display name</label>
+                  <p id="account-name-help">The name shown alongside your forum posts. Leave blank to appear as Anonymous.</p>
+                  <input
+                    id="account-display-name"
+                    className="input"
+                    autoComplete="nickname"
+                    aria-describedby="account-name-help"
+                    placeholder="Your public name"
+                    value={accountDisplayName}
+                    disabled={savingAccount}
+                    onChange={(event) => {
+                      setAccountDisplayName(event.target.value);
+                      setAccountMessage(null);
+                      setAccountError(null);
+                    }}
+                  />
+                  <div className="account-save-row">
+                    <button className="btn btn-primary" type="submit" disabled={savingAccount}>
+                      {savingAccount ? "Saving…" : "Save changes"}
+                    </button>
+                    <div aria-live="polite" role="status">
+                      {accountMessage && <span className="account-feedback is-good">Changes saved</span>}
+                      {accountError && <span className="account-feedback is-bad">{accountError}</span>}
+                    </div>
+                  </div>
+                </form>
+                <aside className="account-preview" aria-label="Forum name preview">
+                  <span className="account-label">Forum preview</span>
+                  <div className="account-preview-byline">
+                    <span className="account-avatar account-avatar-small" aria-hidden="true">
+                      {(accountDisplayName.trim() || "Anonymous").slice(0, 1).toUpperCase()}
+                    </span>
+                    <div>
+                      <strong>{accountDisplayName.trim() || "Anonymous"}</strong>
+                      <span>Post author</span>
+                    </div>
+                  </div>
+                  <p>Your email stays out of your public display name.</p>
+                </aside>
+              </div>
+            </div>
+          )}
         </section>
       ) : <div className="columns">
         <PromptList
