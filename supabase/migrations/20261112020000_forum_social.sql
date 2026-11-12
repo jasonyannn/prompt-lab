@@ -1,4 +1,5 @@
 -- Follows and friend requests between forum profiles.
+-- Safe to re-run: tables, indexes and policies are created only if missing.
 --
 -- Follows are one-way and public (profile pages show follower counts), the same
 -- shape as likes. Friendships need both sides to agree, so a row starts as a
@@ -7,7 +8,7 @@
 
 -- ── follows ─────────────────────────────────────────────────────────────────
 
-create table public.forum_follows (
+create table if not exists public.forum_follows (
   follower_id uuid not null default auth.uid() references public.forum_profiles (id) on delete cascade,
   followee_id uuid not null references public.forum_profiles (id) on delete cascade,
   created_at timestamptz not null default now(),
@@ -15,20 +16,23 @@ create table public.forum_follows (
   constraint forum_follows_not_self check (follower_id <> followee_id)
 );
 
-create index forum_follows_followee_idx on public.forum_follows (followee_id);
+create index if not exists forum_follows_followee_idx on public.forum_follows (followee_id);
 
 alter table public.forum_follows enable row level security;
 
+drop policy if exists "Follows are public" on public.forum_follows;
 create policy "Follows are public"
   on public.forum_follows for select
   to anon, authenticated
   using (true);
 
+drop policy if exists "Users follow as themselves" on public.forum_follows;
 create policy "Users follow as themselves"
   on public.forum_follows for insert
   to authenticated
   with check (follower_id = (select auth.uid()));
 
+drop policy if exists "Users unfollow their own follows" on public.forum_follows;
 create policy "Users unfollow their own follows"
   on public.forum_follows for delete
   to authenticated
@@ -36,7 +40,7 @@ create policy "Users unfollow their own follows"
 
 -- ── friendships ─────────────────────────────────────────────────────────────
 
-create table public.forum_friendships (
+create table if not exists public.forum_friendships (
   id uuid primary key default gen_random_uuid(),
   requester_id uuid not null default auth.uid() references public.forum_profiles (id) on delete cascade,
   addressee_id uuid not null references public.forum_profiles (id) on delete cascade,
@@ -47,23 +51,26 @@ create table public.forum_friendships (
 
 -- One row per pair, whichever direction the request went. Without this, A→B
 -- and B→A could both be pending and never resolve.
-create unique index forum_friendships_pair_key
+create unique index if not exists forum_friendships_pair_key
   on public.forum_friendships (least(requester_id, addressee_id), greatest(requester_id, addressee_id));
-create index forum_friendships_addressee_idx on public.forum_friendships (addressee_id);
+create index if not exists forum_friendships_addressee_idx on public.forum_friendships (addressee_id);
 
 alter table public.forum_friendships enable row level security;
 
+drop policy if exists "Friendship parties can read it" on public.forum_friendships;
 create policy "Friendship parties can read it"
   on public.forum_friendships for select
   to authenticated
   using ((select auth.uid()) in (requester_id, addressee_id));
 
 -- A request is always created pending, so nobody can befriend someone unilaterally.
+drop policy if exists "Users send friend requests as themselves" on public.forum_friendships;
 create policy "Users send friend requests as themselves"
   on public.forum_friendships for insert
   to authenticated
   with check (requester_id = (select auth.uid()) and status = 'pending');
 
+drop policy if exists "Addressees accept requests" on public.forum_friendships;
 create policy "Addressees accept requests"
   on public.forum_friendships for update
   to authenticated
@@ -71,6 +78,7 @@ create policy "Addressees accept requests"
   with check (addressee_id = (select auth.uid()) and status = 'accepted');
 
 -- Either side may cancel, decline or unfriend.
+drop policy if exists "Friendship parties can delete it" on public.forum_friendships;
 create policy "Friendship parties can delete it"
   on public.forum_friendships for delete
   to authenticated

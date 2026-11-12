@@ -43,6 +43,7 @@ export function Forum() {
   const [visibility, setVisibility] = useState<PostVisibility>("public");
   const [composing, setComposing] = useState(false);
   const [myUsername, setMyUsername] = useState<string | null>(null);
+  const [myAvatarUrl, setMyAvatarUrl] = useState<string | null>(null);
   /** null = the public feed; otherwise we are looking at one author. */
   const [viewing, setViewing] = useState<AuthorProfile | null>(null);
   const [viewingPosts, setViewingPosts] = useState<ForumPost[]>([]);
@@ -64,6 +65,8 @@ export function Forum() {
     return () => unsubscribe();
   }, []);
 
+  const myDisplayName = profileDisplayName || (myUsername ? `@${myUsername}` : "You");
+
   async function refreshUser() {
     try {
       const nextUser = await getSessionUser();
@@ -73,14 +76,17 @@ export function Forum() {
         const profile = await getCurrentProfile();
         setProfileDisplayName(profile?.display_name ?? "");
         setMyUsername(profile?.username ?? null);
+        setMyAvatarUrl(profile?.avatar_url ?? null);
       } else {
         setProfileDisplayName("");
         setMyUsername(null);
+        setMyAvatarUrl(null);
       }
     } catch {
       setUser(null);
       setProfileDisplayName("");
       setMyUsername(null);
+      setMyAvatarUrl(null);
     }
   }
 
@@ -266,12 +272,15 @@ export function Forum() {
         {!viewing && (
         <div className="forum-identity">
           {user ? (
-            <p>
+            <p className="forum-identity-self">
+              <Avatar url={myAvatarUrl} name={myDisplayName} className="forum-self-avatar" />
+              <span>
               Posting as{" "}
               <strong>
                 {profileDisplayName || (myUsername ? `@${myUsername}` : "your account")}
               </strong>
               .
+              </span>
             </p>
           ) : (
             <>
@@ -294,7 +303,8 @@ export function Forum() {
 
         {!viewing && !composing && (
           <button className="forum-compose-cta" type="button" onClick={() => setComposing(true)}>
-            Share a prompt with the community
+            {user && <Avatar url={myAvatarUrl} name={myDisplayName} className="forum-self-avatar" />}
+            <span>Share a prompt with the community</span>
           </button>
         )}
 

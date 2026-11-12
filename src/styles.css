@@ -4596,7 +4596,9 @@ a.btn {
 }
 
 .forum-compose-cta {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   width: 100%;
   padding: 14px 16px;
   margin-bottom: 14px;
@@ -4667,4 +4669,32 @@ a.btn {
   justify-content: space-between;
   padding: 10px 0;
   border-bottom: 1px solid var(--line);
+}
+
+/* Your own avatar beside the composer and the "Posting as" line ------------ */
+
+.forum-self-avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  overflow: hidden;
+  border-radius: 50%;
+  background: linear-gradient(140deg, var(--accent), var(--good));
+  color: #0b0d12;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.forum-self-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.forum-identity-self {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
