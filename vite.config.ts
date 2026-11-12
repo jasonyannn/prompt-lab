@@ -156,7 +156,8 @@ function devModelRoutes(env: Record<string, string>) {
 // Deployed as a GitHub Pages *project* site, so built assets live under
 // /prompt-lab/. Dev keeps "/" so localhost URLs stay clean.
 export default defineConfig(({ command, mode }) => ({
-  base: command === "build" && mode !== "sites" ? "/prompt-lab/" : "/",
+  // GitHub Pages serves from /prompt-lab/; Sites and Vercel (VERCEL=1 at build) serve from the root.
+  base: command === "build" && mode !== "sites" && !process.env.VERCEL ? "/prompt-lab/" : "/",
   plugins: [
     react(),
     sites(),
