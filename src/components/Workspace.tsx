@@ -1,5 +1,7 @@
 import { Avatar } from "./Avatar";
 import { uploadProfilePhoto, removeProfilePhoto } from "../lib/profilePhoto";
+import { validateProfilePhoto, type CropView } from "../lib/avatarImage";
+import { PhotoCropper } from "./PhotoCropper";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePrompts } from "../hooks/usePrompts";
 import { useAgents } from "../hooks/useAgents";
@@ -45,6 +47,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [photoMessage, setPhotoMessage] = useState<string | null>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
+  const [cropFile, setCropFile] = useState<File | null>(null);
   const [accountUsername, setAccountUsername] = useState<string | null>(null);
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountMessage, setAccountMessage] = useState<string | null>(null);
@@ -142,12 +145,25 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
     return () => { active = false; };
   }, [user, view]);
 
-  async function handleProfilePhoto(file?: File) {
+  /** Validate up front so a bad file errors on the page, not inside the cropper. */
+  function chooseProfilePhoto(file: File) {
+    setPhotoError(null);
+    setPhotoMessage(null);
+    try {
+      validateProfilePhoto(file);
+      setCropFile(file);
+    } catch (caught) {
+      setPhotoError(caught instanceof Error ? caught.message : "Could not read that photo.");
+    }
+  }
+
+  async function handleProfilePhoto(file?: File, crop?: CropView) {
     setSavingPhoto(true);
     setPhotoError(null);
     setPhotoMessage(null);
     try {
-      const profile = file ? await uploadProfilePhoto(file) : await removeProfilePhoto();
+      const profile = file ? await uploadProfilePhoto(file, crop) : await removeProfilePhoto();
+      setCropFile(null);
       setAccountAvatar(profile.avatar_url ?? null);
       setPhotoMessage(file ? "Photo updated" : "Photo removed");
     } catch (caught) {
@@ -382,7 +398,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
                     onChange={(event) => {
                       const file = event.target.files?.[0];
                       event.target.value = "";
-                      if (file) void handleProfilePhoto(file);
+                      if (file) chooseProfilePhoto(file);
                     }} />
                   <button className="btn btn-quiet" disabled={savingPhoto}
                     onClick={() => photoInputRef.current?.click()}>
@@ -502,6 +518,14 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
         />
       </div>}
       </main>
+      {cropFile && (
+        <PhotoCropper
+          file={cropFile}
+          saving={savingPhoto}
+          onCancel={() => setCropFile(null)}
+          onSave={(crop) => void handleProfilePhoto(cropFile, crop)}
+        />
+      )}
     </div>
   );
 }
