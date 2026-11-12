@@ -181,6 +181,10 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
 
   async function submitSignUp() {
     const address = email.trim();
+    if (!username.trim()) {
+      setAuthState({ kind: "error", text: "Choose a username to create your account." });
+      return;
+    }
     if (!address || !password.trim()) {
       setAuthState({ kind: "error", text: "Enter both your email and password." });
       return;

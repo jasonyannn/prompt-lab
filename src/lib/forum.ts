@@ -526,7 +526,7 @@ export async function signInWithEmailPassword(email: string, password: string) {
   return data;
 }
 
-export async function signUpWithEmailPassword(email: string, password: string, username?: string) {
+export async function signUpWithEmailPassword(email: string, password: string, username: string) {
   const trimmedEmail = email.trim();
   const trimmedPassword = password.trim();
 
@@ -534,8 +534,11 @@ export async function signUpWithEmailPassword(email: string, password: string, u
     throw new Error("Enter both your email address and password.");
   }
 
-  const handle = username === undefined ? undefined : normalizeUsername(username);
-  if (handle) await assertUsernameAvailable(handle);
+  // Every account needs a public handle; it is also what the sign-up trigger
+  // turns into the forum profile.
+  if (!username.trim()) throw new Error("Choose a username to create your account.");
+  const handle = normalizeUsername(username);
+  await assertUsernameAvailable(handle);
 
   // Without a redirect the confirmation link goes to the project's Site URL,
   // which may belong to another app sharing the project. This URL must also
@@ -544,7 +547,7 @@ export async function signUpWithEmailPassword(email: string, password: string, u
     email: trimmedEmail,
     password: trimmedPassword,
     options: {
-      ...(handle ? { data: { promptlab_username: handle } } : {}),
+      data: { promptlab_username: handle },
       emailRedirectTo: new URL(import.meta.env.BASE_URL, window.location.origin).href,
     },
   });

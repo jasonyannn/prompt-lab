@@ -33,6 +33,12 @@ describe("username signup", () => {
     expect(data.session).toBeNull();
   });
 
+  it("requires a username and creates no auth user without one", async () => {
+    await expect(signUpWithEmailPassword("jason@example.com", "password123", "   "))
+      .rejects.toThrow("Choose a username");
+    expect(mocks.signUp).not.toHaveBeenCalled();
+  });
+
   it("does not create an auth user when the handle is already taken", async () => {
     mocks.maybeSingle.mockResolvedValue({ data: { id: "other" }, error: null });
     await expect(signUpWithEmailPassword("jason@example.com", "password123", "jason_yan"))
