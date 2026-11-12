@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useSettings } from "../hooks/useSettings";
 import { LANGUAGES } from "../lib/i18n";
 import { UsernameSettings } from "./UsernameSettings";
@@ -13,6 +13,8 @@ import type {
 } from "../lib/settingsStore";
 
 type Props = {
+  /** Profile and photo controls, shown first so account settings live in one place. */
+  account?: ReactNode;
   onExport: () => void;
   onImport: () => void;
 };
@@ -84,7 +86,7 @@ function Toggle({
   );
 }
 
-export function Settings({ onExport, onImport }: Props) {
+export function Settings({ account, onExport, onImport }: Props) {
   const { settings, set, reset, t } = useSettings();
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -98,6 +100,8 @@ export function Settings({ onExport, onImport }: Props) {
           <em>{t("settings.subtitle")}</em>
         </h2>
       </header>
+
+      {account}
 
       <UsernameSettings />
 

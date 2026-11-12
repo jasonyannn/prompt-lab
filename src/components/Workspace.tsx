@@ -38,7 +38,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
   const { categories: savedCategories } = useCategories();
   const { user, signOut } = useAuth();
   const { t } = useSettings();
-  const [view, setView] = useState<"discover" | "library" | "studio" | "forum" | "account" | "settings">(
+  const [view, setView] = useState<"discover" | "library" | "studio" | "forum" | "settings">(
     "discover"
   );
   const [accountDisplayName, setAccountDisplayName] = useState("");
@@ -262,110 +262,8 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
     setView("library");
   }
 
-  return (
-    <div className="app">
-      <a className="skip-link" href="#main-content">
-        {t("nav.skipToContent")}
-      </a>
-      <header className="topbar">
-        <button className="brand brand-button" onClick={onHome}>
-          <span className="mark" aria-hidden="true" />
-          <h1>Prompt Lab</h1>
-          <span className="tagline">agent-ready prompt library</span>
-        </button>
-
-        <nav className="workspace-nav" aria-label="Workspace sections">
-          <button
-            className={view === "discover" ? "is-active" : ""}
-            onClick={() => setView("discover")}
-          >
-            {t("nav.discover")}
-          </button>
-          <button
-            className={view === "library" ? "is-active" : ""}
-            onClick={() => setView("library")}
-          >
-            {t("nav.library")}
-          </button>
-          <button
-            className={view === "studio" ? "is-active" : ""}
-            onClick={() => setView("studio")}
-          >
-            {t("nav.studio")}
-          </button>
-          <button
-            className={view === "forum" ? "is-active" : ""}
-            onClick={() => setView("forum")}
-          >
-            {t("nav.forum")}
-          </button>
-          <button
-            className={view === "account" ? "is-active" : ""}
-            onClick={() => setView("account")}
-          >
-            Account
-          </button>
-          <button
-            className={view === "settings" ? "is-active" : ""}
-            onClick={() => setView("settings")}
-          >
-            {t("nav.settings")}
-          </button>
-        </nav>
-
-        <div className="topbar-spacer" />
-
-        {/* Export and Import live in Settings; this input backs its Import button. */}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/json"
-          hidden
-          onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void importLibrary(file);
-            event.target.value = "";
-          }}
-        />
-
-        {user && (
-          <div className="account-chip">
-            <span title={accountUsername ? `@${accountUsername}` : "Signed in"}>
-              {accountUsername ? `@${accountUsername}` : "Signed in"}
-            </span>
-            <button className="btn btn-ghost" onClick={() => void signOut()}>
-              Sign out
-            </button>
-          </div>
-        )}
-
-        <WebMCPStatus
-          ready={ready}
-          supported={supported}
-          toolCount={tools.length}
-          remoteReady={remoteMcp.ready}
-          remoteToolCount={remoteMcp.tools.length}
-        />
-      </header>
-
-      <main id="main-content" tabIndex={-1}>
-      {view === "settings" ? (
-        <Settings
-          onExport={exportLibrary}
-          onImport={() => fileRef.current?.click()}
-        />
-      ) : view === "discover" ? (
-        <Discover onOpenPrompt={openInLibrary} />
-      ) : view === "studio" ? (
-        <PromptStudio onOpenPrompt={openInLibrary} />
-      ) : view === "forum" ? (
-        <Forum />
-      ) : view === "account" ? (
-        <section className="account-page" aria-labelledby="account-title">
-          <header className="account-heading">
-            <h2 id="account-title">Profile</h2>
-            <p>Manage how you appear in the Prompt Lab forum.</p>
-          </header>
+  const accountPanel = (
+    <>
           {!user ? (
             <div className="panel account-signed-out">
               <p>Sign in to manage your public profile.</p>
@@ -378,9 +276,9 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
                 <div>
                   <span className="account-label">Account email</span>
                   <p>{user.email ?? "Signed-in account"}</p>
-                  <button className="account-username-link" onClick={() => setView("settings")}>
-                    {accountUsername ? `@${accountUsername} · Edit username` : "Choose a username in Settings"}
-                  </button>
+                  <span className="account-label">
+                    {accountUsername ? `@${accountUsername}` : "No username yet. Choose one below."}
+                  </span>
                 </div>
               </div>
               <div className="account-photo-controls">
@@ -455,7 +353,102 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
               </div>
             </div>
           )}
-        </section>
+    </>
+  );
+
+  return (
+    <div className="app">
+      <a className="skip-link" href="#main-content">
+        {t("nav.skipToContent")}
+      </a>
+      <header className="topbar">
+        <button className="brand brand-button" onClick={onHome}>
+          <span className="mark" aria-hidden="true" />
+          <h1>Prompt Lab</h1>
+          <span className="tagline">agent-ready prompt library</span>
+        </button>
+
+        <nav className="workspace-nav" aria-label="Workspace sections">
+          <button
+            className={view === "discover" ? "is-active" : ""}
+            onClick={() => setView("discover")}
+          >
+            {t("nav.discover")}
+          </button>
+          <button
+            className={view === "library" ? "is-active" : ""}
+            onClick={() => setView("library")}
+          >
+            {t("nav.library")}
+          </button>
+          <button
+            className={view === "studio" ? "is-active" : ""}
+            onClick={() => setView("studio")}
+          >
+            {t("nav.studio")}
+          </button>
+          <button
+            className={view === "forum" ? "is-active" : ""}
+            onClick={() => setView("forum")}
+          >
+            {t("nav.forum")}
+          </button>
+          <button
+            className={view === "settings" ? "is-active" : ""}
+            onClick={() => setView("settings")}
+          >
+            {t("nav.settings")}
+          </button>
+        </nav>
+
+        <div className="topbar-spacer" />
+
+        {/* Export and Import live in Settings; this input backs its Import button. */}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/json"
+          hidden
+          onChange={(event) => {
+            const file = event.target.files?.[0];
+            if (file) void importLibrary(file);
+            event.target.value = "";
+          }}
+        />
+
+        {user && (
+          <div className="account-chip">
+            <span title={accountUsername ? `@${accountUsername}` : "Signed in"}>
+              {accountUsername ? `@${accountUsername}` : "Signed in"}
+            </span>
+            <button className="btn btn-ghost" onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </div>
+        )}
+
+        <WebMCPStatus
+          ready={ready}
+          supported={supported}
+          toolCount={tools.length}
+          remoteReady={remoteMcp.ready}
+          remoteToolCount={remoteMcp.tools.length}
+        />
+      </header>
+
+      <main id="main-content" tabIndex={-1}>
+      {view === "settings" ? (
+        <Settings
+          account={accountPanel}
+          onExport={exportLibrary}
+          onImport={() => fileRef.current?.click()}
+        />
+      ) : view === "discover" ? (
+        <Discover onOpenPrompt={openInLibrary} />
+      ) : view === "studio" ? (
+        <PromptStudio onOpenPrompt={openInLibrary} />
+      ) : view === "forum" ? (
+        <Forum />
       ) : <div className="columns">
         <PromptList
           prompts={visible}
