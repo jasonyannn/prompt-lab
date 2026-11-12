@@ -287,7 +287,7 @@ can still publish an anonymous post; the UI then renders the post without a user
 identity instead of requiring an account.
 
 The forum stores author identity as `author_id`, and resolves the visible display
-name by joining to `public.profiles` through the user record. This keeps the
+name by joining to `public.forum_profiles` through the user record. This keeps the
 author relationship stable without copying a user label into the post row.
 
 Likes are handled in two layers:

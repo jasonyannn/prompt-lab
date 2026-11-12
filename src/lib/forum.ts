@@ -37,7 +37,7 @@ export async function getPublishedPosts(): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("status", "published")
     .eq("visibility", "public")
@@ -59,7 +59,7 @@ export async function searchForumPosts(
   let request = supabase
     .from("forum_posts")
     .select(
-      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("status", "published");
 
@@ -94,7 +94,7 @@ export async function getForumPostById(postId: string): Promise<ForumPost | null
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("id", postId)
     .eq("status", "published")
@@ -256,7 +256,7 @@ export async function getCurrentProfile(): Promise<UserProfile | null> {
   if (!user) return null;
 
   const { data, error } = await supabase
-    .from("profiles")
+    .from("forum_profiles")
     .select("id, display_name, avatar_url, created_at, updated_at")
     .eq("id", user.id)
     .maybeSingle();
@@ -279,7 +279,7 @@ export async function updateCurrentProfile(input: {
   const sanitizedDisplayName = input.display_name?.trim() || null;
 
   const { data, error } = await supabase
-    .from("profiles")
+    .from("forum_profiles")
     .upsert(
       {
         id: user.id,
@@ -309,7 +309,7 @@ export async function getAuthorProfile(authorId: string): Promise<AuthorProfile>
   const isSelf = viewer?.id === authorId;
 
   const { data: profile, error: profileError } = await supabase
-    .from("profiles")
+    .from("forum_profiles")
     .select("id, display_name, avatar_url, created_at")
     .eq("id", authorId)
     .maybeSingle();
@@ -354,7 +354,7 @@ export async function getAuthorPosts(authorId: string): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("author_id", authorId)
     .eq("status", "published")
@@ -378,7 +378,7 @@ export async function getMyPosts(): Promise<ForumPost[]> {
   const { data, error } = await supabase
     .from("forum_posts")
     .select(
-      "*, profiles:profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
+      "*, profiles:forum_profiles!author_id(display_name), forum_post_like_totals:forum_post_like_totals(post_id, like_count)"
     )
     .eq("author_id", user.id)
     .order("created_at", { ascending: false });
@@ -510,9 +510,15 @@ export async function signUpWithEmailPassword(email: string, password: string) {
     throw new Error("Enter both your email address and password.");
   }
 
+  // Without a redirect the confirmation link goes to the project's Site URL,
+  // which may belong to another app sharing the project. This URL must also
+  // be listed under Authentication → URL Configuration → Redirect URLs.
   const { data, error } = await supabase.auth.signUp({
     email: trimmedEmail,
     password: trimmedPassword,
+    options: {
+      emailRedirectTo: new URL(import.meta.env.BASE_URL, window.location.origin).href,
+    },
   });
 
   if (error) {

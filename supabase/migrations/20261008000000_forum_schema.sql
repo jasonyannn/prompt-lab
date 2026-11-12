@@ -6,10 +6,15 @@
 --
 -- RLS is the security boundary: the browser talks to these tables directly
 -- with the anon key, so every rule the UI relies on is enforced below.
+--
+-- Everything here is namespaced (forum_*) and nothing hooks auth.users, so the
+-- schema can share a Supabase project with another app: `public.profiles` is a
+-- common table name, and a trigger on auth.users would run on that app's
+-- sign-ups too.
 
--- ── profiles ────────────────────────────────────────────────────────────────
+-- ── forum_profiles ──────────────────────────────────────────────────────────
 
-create table public.profiles (
+create table public.forum_profiles (
   id uuid primary key references auth.users (id) on delete cascade,
   display_name text check (char_length(display_name) <= 80),
   avatar_url text,
@@ -17,48 +22,31 @@ create table public.profiles (
   updated_at timestamptz not null default now()
 );
 
-alter table public.profiles enable row level security;
+alter table public.forum_profiles enable row level security;
 
-create policy "Profiles are public"
-  on public.profiles for select
+create policy "Forum profiles are public"
+  on public.forum_profiles for select
   to anon, authenticated
   using (true);
 
-create policy "Users create their own profile"
-  on public.profiles for insert
+create policy "Users create their own forum profile"
+  on public.forum_profiles for insert
   to authenticated
   with check ((select auth.uid()) = id);
 
-create policy "Users update their own profile"
-  on public.profiles for update
+create policy "Users update their own forum profile"
+  on public.forum_profiles for update
   to authenticated
   using ((select auth.uid()) = id)
   with check ((select auth.uid()) = id);
-
--- Every account gets a profile row, so posts can always join to one.
-create function public.handle_new_user()
-returns trigger
-language plpgsql
-security definer
-set search_path = ''
-as $$
-begin
-  insert into public.profiles (id) values (new.id) on conflict (id) do nothing;
-  return new;
-end;
-$$;
-
-create trigger on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
 
 -- ── forum_posts ─────────────────────────────────────────────────────────────
 
 create table public.forum_posts (
   id uuid primary key default gen_random_uuid(),
-  -- Null for anonymous posts. References profiles (not auth.users) so
-  -- PostgREST can embed `profiles!author_id`.
-  author_id uuid references public.profiles (id) on delete set null,
+  -- Null for anonymous posts. References forum_profiles (not auth.users) so
+  -- PostgREST can embed `forum_profiles!author_id`.
+  author_id uuid references public.forum_profiles (id) on delete set null,
   title text not null check (char_length(title) between 1 and 200),
   content text not null check (char_length(content) between 1 and 50000),
   category text not null default 'General',
@@ -122,7 +110,30 @@ create policy "Authors delete their own posts"
   to authenticated
   using (author_id = (select auth.uid()));
 
-create function public.touch_updated_at()
+-- A signed-in author's first post creates their forum profile, so posts can
+-- always join to one without a trigger on auth.users. This runs before the
+-- insert policy is checked; a post for someone else's id is rejected there
+-- and the whole statement, profile row included, rolls back.
+create function public.forum_ensure_author_profile()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.author_id is not null then
+    insert into public.forum_profiles (id) values (new.author_id)
+    on conflict (id) do nothing;
+  end if;
+  return new;
+end;
+$$;
+
+create trigger forum_posts_ensure_author_profile
+  before insert on public.forum_posts
+  for each row execute function public.forum_ensure_author_profile();
+
+create function public.forum_touch_updated_at()
 returns trigger
 language plpgsql
 set search_path = ''
@@ -135,11 +146,11 @@ $$;
 
 create trigger forum_posts_touch_updated_at
   before update on public.forum_posts
-  for each row execute function public.touch_updated_at();
+  for each row execute function public.forum_touch_updated_at();
 
-create trigger profiles_touch_updated_at
-  before update on public.profiles
-  for each row execute function public.touch_updated_at();
+create trigger forum_profiles_touch_updated_at
+  before update on public.forum_profiles
+  for each row execute function public.forum_touch_updated_at();
 
 -- ── likes ───────────────────────────────────────────────────────────────────
 
@@ -211,5 +222,5 @@ create trigger forum_post_likes_sync_total
   for each row execute function public.sync_forum_like_total();
 
 -- Trigger functions are not meant to be called over the REST API.
-revoke execute on function public.handle_new_user() from anon, authenticated, public;
+revoke execute on function public.forum_ensure_author_profile() from anon, authenticated, public;
 revoke execute on function public.sync_forum_like_total() from anon, authenticated, public;

@@ -21,7 +21,7 @@ the trust boundaries are. Product intent is in `goal.md`, the agent model in
                                  │ /api/model/*           │ supabase-js (anon key)
                                  ▼                        ▼
   External agent ── /mcp/ ──► Cloudflare Worker      Supabase
-                              server/index.ts        auth.users, profiles,
+                              server/index.ts        auth.users, forum_profiles,
                               ├ mcp.ts  (17 tools,   forum_posts, likes
                               │  + MCP prompts)      (RLS enforced)
                               ├ openai.ts ──► OpenAI Responses API
