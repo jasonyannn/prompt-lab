@@ -89,6 +89,13 @@
   color: var(--text);
 }
 
+.lp-links a.lp-support::before {
+  content: "♥";
+  margin-right: 6px;
+  color: #ff6b81;
+  font-size: 12px;
+}
+
 .lp-nav-right {
   display: flex;
   align-items: center;
