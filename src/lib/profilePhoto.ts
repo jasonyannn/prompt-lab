@@ -1,6 +1,6 @@
 import { supabase } from "./supabase";
 import { getCurrentProfile, getSessionUser, type UserProfile } from "./forum";
-import { prepareProfilePhoto } from "./avatarImage";
+import { prepareProfilePhoto, type CropView } from "./avatarImage";
 
 const BUCKET = "forum-avatars";
 
@@ -24,10 +24,10 @@ async function savePhotoUrl(userId: string, avatarUrl: string | null): Promise<U
   return data as UserProfile;
 }
 
-export async function uploadProfilePhoto(file: File): Promise<UserProfile> {
+export async function uploadProfilePhoto(file: File, crop?: CropView): Promise<UserProfile> {
   const user = await getSessionUser();
   if (!user) throw new Error("Sign in to upload a profile photo.");
-  const [photo, previous] = await Promise.all([prepareProfilePhoto(file), getCurrentProfile()]);
+  const [photo, previous] = await Promise.all([prepareProfilePhoto(file, crop), getCurrentProfile()]);
   const storage = supabase.storage.from(BUCKET);
   const path = `${user.id}/${crypto.randomUUID()}.jpg`;
   const { error } = await storage.upload(path, photo, { contentType: "image/jpeg", cacheControl: "3600", upsert: false });
