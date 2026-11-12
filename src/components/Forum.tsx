@@ -343,7 +343,7 @@ export function Forum() {
                 {(viewing.display_name ?? "A").slice(0, 2).toUpperCase()}
               </span>
               <div className="profile-identity">
-                <strong>{viewing.display_name?.trim() || "Anonymous"}</strong>
+                <strong>{getPublicProfileName(viewing)}</strong>
                 {viewing.created_at && (
                   <small>
                     Joined {new Date(viewing.created_at).toLocaleDateString()}

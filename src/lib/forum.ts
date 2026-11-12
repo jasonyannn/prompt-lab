@@ -333,7 +333,7 @@ export async function getAuthorProfile(authorId: string): Promise<AuthorProfile>
 
   const { data: profile, error: profileError } = await supabase
     .from("forum_profiles")
-    .select("id, display_name, avatar_url, created_at")
+    .select("id, username, display_name, avatar_url, created_at")
     .eq("id", authorId)
     .maybeSingle();
 
@@ -364,6 +364,7 @@ export async function getAuthorProfile(authorId: string): Promise<AuthorProfile>
 
   return {
     id: authorId,
+    username: profile?.username ?? null,
     display_name: profile?.display_name ?? null,
     avatar_url: profile?.avatar_url ?? null,
     created_at: profile?.created_at ?? null,
