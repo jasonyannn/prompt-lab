@@ -200,6 +200,10 @@ select {
 .account-preview > p { margin: 12px 0 0; color: var(--text-dim); font-size: 12px; }
 .account-signed-out { padding: 24px; }
 .account-signed-out p { margin: 0 0 16px; color: var(--text-dim); }
+.username-form { max-width: 560px; }
+.username-form > label { display: block; font-weight: 500; margin-bottom: 4px; }
+.username-controls { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.username-controls .input { flex: 1; min-width: 160px; }
 
 @media (max-width: 680px) {
   .account-content { grid-template-columns: minmax(0, 1fr); gap: 24px; padding: 20px; }

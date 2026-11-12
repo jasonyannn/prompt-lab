@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useSettings } from "../hooks/useSettings";
 import { LANGUAGES } from "../lib/i18n";
+import { UsernameSettings } from "./UsernameSettings";
 import type {
   ContrastMode,
   FontChoice,
@@ -95,6 +96,8 @@ export function Settings({ onExport, onImport }: Props) {
           <em>{t("settings.subtitle")}</em>
         </h2>
       </header>
+
+      <UsernameSettings />
 
       <section className="panel settings-panel" aria-labelledby="a11y-heading">
         <div className="panel-head">
