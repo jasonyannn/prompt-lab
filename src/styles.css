@@ -4100,7 +4100,6 @@ html[data-underline-links="on"] a {
 }
 
 @media (max-width: 560px) {
-  .topbar-file-action,
   .topbar .status {
     display: none;
   }

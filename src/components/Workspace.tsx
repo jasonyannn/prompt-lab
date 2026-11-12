@@ -315,12 +315,7 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
 
         <div className="topbar-spacer" />
 
-        <button className="btn btn-ghost topbar-file-action" onClick={exportLibrary}>
-          Export
-        </button>
-        <button className="btn btn-ghost topbar-file-action" onClick={() => fileRef.current?.click()}>
-          Import
-        </button>
+        {/* Export and Import live in Settings; this input backs its Import button. */}
         <input
           ref={fileRef}
           type="file"
