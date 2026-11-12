@@ -123,7 +123,6 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
       return;
     }
 
-    if (view !== "account") return;
     let active = true;
 
     void (async () => {
@@ -320,7 +319,9 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
 
         {user && (
           <div className="account-chip">
-            <span title={user.email ?? "Signed in"}>{user.email ?? "Signed in"}</span>
+            <span title={accountUsername ? `@${accountUsername}` : "Signed in"}>
+              {accountUsername ? `@${accountUsername}` : "Signed in"}
+            </span>
             <button className="btn btn-ghost" onClick={() => void signOut()}>
               Sign out
             </button>
