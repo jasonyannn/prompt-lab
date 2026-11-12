@@ -273,9 +273,6 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
             <button className="btn btn-lg btn-quiet" onClick={() => focusSignIn()}>
               {user ? "Your account" : "Sign in"}
             </button>
-            <button className="btn btn-lg btn-quiet" onClick={onEnter}>
-              Browse without an account →
-            </button>
           </div>
 
           <dl className="stat-row">
@@ -319,8 +316,8 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
                 <>
                   <h3 className="signin-title">{authMode === "signup" ? "Create your account" : "Welcome back"}</h3>
                   <p className="signin-note">
-                    Sign in to publish forum posts under your name. You can browse
-                    the library without an account.
+                    Sign in or create an account to open the app and publish forum
+                    posts under your name.
                   </p>
                   <form
                     className="signin-row"
@@ -561,8 +558,8 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
             browser-native WebMCP in a supported browser, or run the optional
             local Llama agent inside the app.
           </p>
-          <button className="btn btn-primary btn-lg" onClick={onEnter}>
-            Open the app →
+          <button className="btn btn-primary btn-lg" onClick={user ? onEnter : () => focusSignIn("signup")}>
+            {user ? "Open the app →" : "Create account"}
           </button>
         </Section>
       </main>

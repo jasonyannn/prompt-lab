@@ -440,7 +440,6 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
                       <span>Post author</span>
                     </div>
                   </div>
-                  <p>Your email stays out of your public display name.</p>
                 </aside>
               </div>
             </div>
