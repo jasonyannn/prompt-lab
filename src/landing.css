@@ -869,3 +869,8 @@
     width: 100%;
   }
 }
+
+/* Breathing room between the community cards and the agent section. */
+.lp-section + .remote-connect {
+  margin-top: 56px;
+}

@@ -20,6 +20,24 @@ const SNIPPET = `document.modelContext.registerTool({
   }
 });`;
 
+const COMMUNITY = [
+  {
+    n: "01",
+    title: "Post what works",
+    body: "Share the prompts you rely on in the community forum. Add a title, a username and a photo, and let people like the ones that help them.",
+  },
+  {
+    n: "02",
+    title: "Find something better",
+    body: "Browse the forum and the Discover catalogue by goal or category. Save any prompt you like straight into your own library.",
+  },
+  {
+    n: "03",
+    title: "Draft your own, even offline",
+    body: "Write in Prompt Studio, or run the app on your computer with Ollama to draft prompts with a local model. Nothing leaves your machine.",
+  },
+];
+
 const STEPS = [
   {
     n: "01",
@@ -272,7 +290,8 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
           </div>
 
           <nav className="lp-links">
-            <a href="#connect">Connect</a>
+            <a href="#community">Community</a>
+            <a href="#connect">For agents</a>
             <a href="#tools">Tools</a>
             <a href="#how">How it works</a>
             <a
@@ -326,20 +345,20 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
         <Section className="hero">
           <span className="eyebrow">
             <span className="eyebrow-dot" />
-            WebMCP Challenge · 2026
+            A community for prompts
           </span>
 
           <h2 className="display">
-            A prompt library that
+            Share the prompts
             <br />
-            <em>agents can actually use.</em>
+            <em>that actually work.</em>
           </h2>
 
           <p className="lede">
-            Most web apps make an agent read pixels and guess at buttons. Prompt
-            Lab hands it typed tools instead — in the browser through native{" "}
-            <code>document.modelContext</code>, and over the web through a real{" "}
-            <code>/mcp/</code> endpoint for external agents.
+            Post your best prompts, find what everyone else is using, and keep
+            your own library in one place. Like the ones that help, save the ones
+            you want, and draft new ones with a local model. AI agents can use
+            the library too.
           </p>
 
           <div className="hero-cta">
@@ -353,16 +372,16 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
 
           <dl className="stat-row">
             <div>
-              <dt>In-page tools</dt>
-              <dd>{PROMPT_TOOLS.length}</dd>
+              <dt>Price</dt>
+              <dd className="stat-protocol">Free</dd>
             </div>
             <div>
-              <dt>Remote tools</dt>
-              <dd>{remoteMcp.tools.length}</dd>
+              <dt>Source</dt>
+              <dd className="stat-protocol">Open</dd>
             </div>
             <div>
-              <dt>Protocol</dt>
-              <dd className="stat-protocol">2026</dd>
+              <dt>Local drafting</dt>
+              <dd className="stat-protocol">Ollama</dd>
             </div>
           </dl>
         </Section>
@@ -493,10 +512,28 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
         </section>
         </div>
 
+        {/* Community -------------------------------------------------- */}
+        <Section className="lp-section">
+          <div id="community" className="section-head">
+            <span className="kicker">Community</span>
+            <h3 className="section-title">Where good prompts get passed around.</h3>
+          </div>
+
+          <div className="steps">
+            {COMMUNITY.map((item) => (
+              <article className="step" key={item.n}>
+                <span className="step-n">{item.n}</span>
+                <h4>{item.title}</h4>
+                <p>{item.body}</p>
+              </article>
+            ))}
+          </div>
+        </Section>
+
         {/* Remote MCP ------------------------------------------------ */}
         <Section className="remote-connect">
           <div id="connect" className="remote-connect-copy">
-            <span className="kicker">Remote MCP</span>
+            <span className="kicker">For agents · Remote MCP</span>
             <h3 className="section-title">Give any agent one URL.</h3>
             <p className="section-sub">
               External agents connect over standard Streamable HTTP and work
@@ -644,14 +681,14 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
         {/* Closing ---------------------------------------------------- */}
         <Section className="closing">
           <h3 className="display closing-title">
-            Open it with an agent
+            Bring your best prompt
             <br />
-            <em>and watch it work.</em>
+            <em>and see what people do with it.</em>
           </h3>
           <p className="lede">
-            Connect an external agent to <code>{remoteMcp.endpoint}</code>, use
-            browser-native WebMCP in a supported browser, or run the optional
-            local Llama agent inside the app.
+            Create a free account, post to the community and build your library.
+            Prefer agents? Connect one to <code>{remoteMcp.endpoint}</code>, or run
+            the optional local Llama agent on your own computer.
           </p>
           <button className="btn btn-primary btn-lg" onClick={user ? onEnter : () => focusSignIn("signup")}>
             {user ? "Open the app →" : "Create account"}
