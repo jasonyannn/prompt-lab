@@ -1,0 +1,55 @@
+name: Deploy to Vercel
+
+# Deploys this repo to officialpromptlab.vercel.app on every push to main.
+# Vercel's own Git integration is linked to a different GitHub account, so
+# this workflow builds here and uploads the result with the Vercel CLI.
+#
+# Requires one repository secret: VERCEL_TOKEN (Vercel → Account Settings →
+# Tokens). The org and project IDs below are identifiers, not secrets. The
+# VITE_SUPABASE_* values come from the Vercel project's environment variables.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-production
+  cancel-in-progress: true
+
+env:
+  VERCEL_ORG_ID: team_r3YjYvm9wM1BDroiH9A1GdgE
+  VERCEL_PROJECT_ID: prj_EDl8hJp7N2G4I8DeE5r8zTCfJbNr
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm install --global vercel@latest
+
+      - name: Pull Vercel project settings and environment variables
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      # VERCEL=1 makes vite.config.ts build with base "/" instead of the
+      # GitHub Pages "/prompt-lab/" path.
+      - name: Build
+        run: vercel build --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL: "1"
+
+      - name: Deploy
+        run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
