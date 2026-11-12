@@ -66,89 +66,90 @@ export function PromptList({
           aria-label="Search prompts"
         />
 
-        <div className="chips">
-          <button
-            className={`chip${activeCategory === "All" ? " is-active" : ""}`}
-            onClick={() => onCategoryChange("All")}
+        <div className="filter-row">
+          <select
+            className="select"
+            value={activeCategory}
+            onChange={(event) => onCategoryChange(event.target.value)}
+            aria-label="Filter prompts by category"
           >
-            All
-          </button>
-          {categories.map((category) => (
-            <button
-              key={category}
-              className={`chip${activeCategory === category ? " is-active" : ""}`}
-              onClick={() => onCategoryChange(category)}
-            >
-              {category}
-            </button>
-          ))}
+            <option value="All">All categories</option>
+            {categories.map((category) => (
+              <option key={category} value={category}>{category}</option>
+            ))}
+          </select>
 
-          {adding ? (
-            <form
-              className="chip-form"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const created = categoryStore.create(draft);
-                if (created) onCategoryChange(created);
+          <select
+            className="select"
+            value={sort}
+            onChange={(event) => onSortChange(event.target.value as SortKey)}
+            aria-label="Sort prompts"
+          >
+            <option value="recent">Recently updated</option>
+            <option value="used">Most used</option>
+            <option value="rated">Highest rated</option>
+            <option value="title">Title A–Z</option>
+          </select>
+        </div>
+
+        {agents.length > 0 && (
+          <select
+            className="select"
+            value={activeAgent}
+            onChange={(event) => onAgentChange(event.target.value)}
+            aria-label="Filter prompts by agent"
+          >
+            <option value="All">All agents</option>
+            {agents.map((agent) => (
+              <option key={agent.id} value={agent.id}>{agent.name}</option>
+            ))}
+          </select>
+        )}
+
+        {adding ? (
+          <form
+            className="category-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const created = categoryStore.create(draft);
+              if (created) onCategoryChange(created);
+              setDraft("");
+              setAdding(false);
+            }}
+          >
+            <input
+              className="input"
+              aria-label="New category name"
+              placeholder="Category name"
+              autoFocus
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape") {
+                  setDraft("");
+                  setAdding(false);
+                }
+              }}
+            />
+            <button className="btn" type="submit" disabled={!draft.trim()}>
+              Add
+            </button>
+            <button
+              className="btn btn-ghost"
+              type="button"
+              onClick={() => {
                 setDraft("");
                 setAdding(false);
               }}
             >
-              <input
-                className="chip-input"
-                aria-label="New category name"
-                placeholder="Category name"
-                autoFocus
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    setDraft("");
-                    setAdding(false);
-                  }
-                }}
-                onBlur={() => {
-                  if (!draft.trim()) setAdding(false);
-                }}
-              />
-              <button className="chip chip-add" type="submit" disabled={!draft.trim()}>
-                Add
-              </button>
-            </form>
-          ) : (
-            <button
-              className="chip chip-add"
-              title="Create a category"
-              onClick={() => setAdding(true)}
-            >
-              + New
+              Cancel
             </button>
-          )}
-        </div>
-
-        <select
-          className="select"
-          value={sort}
-          onChange={(event) => onSortChange(event.target.value as SortKey)}
-          aria-label="Sort prompts"
-        >
-          <option value="recent">Recently updated</option>
-          <option value="used">Most used</option>
-          <option value="rated">Highest rated</option>
-          <option value="title">Title A–Z</option>
-        </select>
-
-        <select
-          className="select"
-          value={activeAgent}
-          onChange={(event) => onAgentChange(event.target.value)}
-          aria-label="Filter prompts by agent"
-        >
-          <option value="All">All agents</option>
-          {agents.map((agent) => (
-            <option key={agent.id} value={agent.id}>{agent.name}</option>
-          ))}
-        </select>
+          </form>
+        ) : (
+          <button className="link-button" type="button" onClick={() => setAdding(true)}>
+            + New category
+          </button>
+        )}
       </div>
 
       <div className="list-scroll">
