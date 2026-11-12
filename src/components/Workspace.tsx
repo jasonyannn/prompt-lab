@@ -1,3 +1,4 @@
+import { SUPPORT_URL } from "../lib/links";
 import { Avatar } from "./Avatar";
 import { uploadProfilePhoto, removeProfilePhoto } from "../lib/profilePhoto";
 import { validateProfilePhoto, type CropView } from "../lib/avatarImage";
@@ -399,6 +400,10 @@ export function Workspace({ webmcp, remoteMcp, onHome }: Props) {
           >
             {t("nav.settings")}
           </button>
+          <a className="nav-support" href={SUPPORT_URL} target="_blank" rel="noreferrer">
+            Support
+            <span className="visually-hidden"> Prompt Lab on Ko-fi (opens in a new tab)</span>
+          </a>
         </nav>
 
         <div className="topbar-spacer" />

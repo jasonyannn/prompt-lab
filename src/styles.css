@@ -4381,3 +4381,32 @@ html[data-underline-links="on"] a {
 a.btn {
   text-decoration: none;
 }
+
+/* Support tab in the workspace nav ------------------------------------------ */
+
+.workspace-nav a.nav-support {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 11px;
+  border-radius: 6px;
+  color: var(--text-faint);
+  font-size: 12.5px;
+  text-decoration: none;
+}
+
+.workspace-nav a.nav-support::before {
+  content: "♥";
+  color: #ff6b81;
+  font-size: 11px;
+}
+
+.workspace-nav a.nav-support:hover,
+.workspace-nav a.nav-support:focus-visible {
+  color: var(--text);
+}
+
+.settings-layout > .account-panel,
+.settings-layout > .account-signed-out {
+  margin-bottom: 16px;
+}

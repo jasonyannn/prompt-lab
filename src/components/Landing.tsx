@@ -1,3 +1,4 @@
+import { SUPPORT_URL } from "../lib/links";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../hooks/useAuth";
 import { PROMPT_TOOLS } from "../lib/webmcp";
@@ -663,7 +664,7 @@ export function Landing({ webmcp, remoteMcp, onEnter }: Props) {
         >
           Source (AGPL-3.0)
         </a>
-        <a href="https://ko-fi.com/officialpromptlab" target="_blank" rel="noreferrer">
+        <a href={SUPPORT_URL} target="_blank" rel="noreferrer">
           Support on Ko-fi
         </a>
       </footer>

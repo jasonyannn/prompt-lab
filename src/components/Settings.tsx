@@ -1,9 +1,9 @@
 import { useState, type ReactNode } from "react";
 import { useSettings } from "../hooks/useSettings";
 import { LANGUAGES } from "../lib/i18n";
+import { SUPPORT_URL } from "../lib/links";
 import { UsernameSettings } from "./UsernameSettings";
 
-export const SUPPORT_URL = "https://ko-fi.com/officialpromptlab";
 import type {
   ContrastMode,
   FontChoice,
