@@ -50,6 +50,7 @@ must pass. The build is what CI runs (`.github/workflows/deploy.yml`).
 | Remote MCP tools + prompts | `server/mcp.ts`, `src/lib/mcpPrompts.ts` |
 | D1 persistence | `server/database.ts` (schema created at runtime by `ensureDatabase`) |
 | OpenAI proxy | `server/openai.ts` |
+| Token usage log + read API | `server/usage.ts` (`/api/usage/events`, `/api/usage/summary`) |
 
 ## Invariants — do not break these
 
@@ -94,6 +95,7 @@ must pass. The build is what CI runs (`.github/workflows/deploy.yml`).
 | `OPENAI_MODEL`, `OPENAI_REASONING_EFFORT` | same | Optional overrides |
 | `MODEL_RATE_LIMIT_PER_HOUR` | Sites settings | Model calls per IP per hour (default 60) |
 | `PROMPTLAB_ALLOWED_ORIGINS` | Sites settings | Extra origins for `/mcp` and `/api/model` |
+| `USAGE_API_TOKEN` | Sites settings | Bearer token for `/api/usage/*` (≥ 32 chars). Unset = API off |
 | `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY` | `.env.local`, GitHub repo **variables** | Public by design; RLS protects data |
 
 ## Gotchas

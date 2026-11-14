@@ -393,6 +393,33 @@ Browser WebMCP requires a **secure origin**: localhost, or HTTPS in production.
 The remote endpoint is emitted in the Sites build with a D1 binding and the
 generated Drizzle migration under `drizzle/`.
 
+## Token usage API
+
+Every OpenAI call through `/api/model/*` is recorded in D1 — tokens (input,
+cached, output, reasoning), model, feature (`generate` or `chat`), duration and
+whether it succeeded. Never prompt text or IPs. An external tracker such as
+Token Doctor reads it with a bearer token. Sites builds only; GitHub Pages and
+`npm run dev` make no metered calls to record.
+
+1. Generate a token: `openssl rand -hex 32`.
+2. Add it to the Sites project settings as `USAGE_API_TOKEN`, then redeploy.
+3. Give the same token and your Sites URL to the tracker. Call from its
+   **server**: the API sends no CORS headers.
+
+```bash
+# Raw calls, oldest first. Pass nextCursor back as ?cursor= until it is null.
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://<your-site>/api/usage/events?since=2026-11-01T00:00:00Z&limit=500"
+
+# Totals plus a per-day (or per-hour) breakdown by feature and model.
+curl -H "Authorization: Bearer $TOKEN" \
+  "https://<your-site>/api/usage/summary?since=2026-11-01&interval=day"
+```
+
+`since`/`until` are ISO 8601 (default: the last 7 days; `until` is exclusive).
+Rows are kept 90 days. Prompt Lab reports tokens, not dollars — price them in
+the tracker, since rates change per model.
+
 ## Architecture
 
 ```
@@ -414,6 +441,7 @@ server/
   index.ts               Worker routing, CORS, /mcp mount, model-route limits
   mcp.ts                 remote MCP server and 16 tool definitions
   database.ts            D1 persistence, seeds, versions and activity
+  usage.ts               per-call token usage log and the /api/usage read API
 db/schema.ts             Drizzle source schema
 drizzle/                 generated D1 migration
 supabase/migrations/     forum schema and row-level security (Supabase)

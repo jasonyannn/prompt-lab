@@ -244,6 +244,23 @@ async function initialize(db: D1Database) {
       count INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (ip, window_start)
     )`),
+    // One row per OpenAI call, read by the usage API (server/usage.ts).
+    // Token columns are NULL when the call failed before OpenAI reported usage.
+    // Deliberately no prompt text and no caller IP.
+    db.prepare(`CREATE TABLE IF NOT EXISTS model_usage (
+      id TEXT PRIMARY KEY NOT NULL,
+      created_at TEXT NOT NULL,
+      feature TEXT NOT NULL,
+      model TEXT NOT NULL,
+      ok INTEGER NOT NULL,
+      input_tokens INTEGER,
+      cached_input_tokens INTEGER,
+      output_tokens INTEGER,
+      reasoning_tokens INTEGER,
+      total_tokens INTEGER,
+      duration_ms INTEGER NOT NULL,
+      error TEXT
+    )`),
     db.prepare(`CREATE TABLE IF NOT EXISTS remote_activity (
       id TEXT PRIMARY KEY NOT NULL,
       tool TEXT NOT NULL,
@@ -263,6 +280,9 @@ async function initialize(db: D1Database) {
     ),
     db.prepare(
       "CREATE INDEX IF NOT EXISTS idx_remote_activity_created_at ON remote_activity(created_at)"
+    ),
+    db.prepare(
+      "CREATE INDEX IF NOT EXISTS idx_model_usage_created_at ON model_usage(created_at, id)"
     ),
   ]);
 

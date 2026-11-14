@@ -154,6 +154,65 @@ function readOutput(payload: unknown): GeneratedItem[] {
   throw new Error("The model returned no usable prompts.");
 }
 
+/**
+ * Token counts for one Responses API call, as OpenAI reported them. These are
+ * what the deployment is billed on, so they are recorded per call for the
+ * usage API (server/usage.ts).
+ */
+export type TokenUsage = {
+  inputTokens: number;
+  /** Portion of inputTokens served from the prompt cache (billed lower). */
+  cachedInputTokens: number;
+  outputTokens: number;
+  /** Portion of outputTokens spent on hidden reasoning. */
+  reasoningTokens: number;
+  totalTokens: number;
+};
+
+const tokenCount = (value: unknown) =>
+  typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? Math.round(value)
+    : 0;
+
+/** Reads `usage` off a Responses API payload; null when it is absent. */
+export function readUsage(payload: unknown): TokenUsage | null {
+  const usage = (payload as { usage?: unknown } | null)?.usage as
+    | {
+        input_tokens?: unknown;
+        input_tokens_details?: { cached_tokens?: unknown };
+        output_tokens?: unknown;
+        output_tokens_details?: { reasoning_tokens?: unknown };
+        total_tokens?: unknown;
+      }
+    | undefined;
+  if (!usage || typeof usage !== "object") return null;
+
+  const inputTokens = tokenCount(usage.input_tokens);
+  const outputTokens = tokenCount(usage.output_tokens);
+  return {
+    inputTokens,
+    cachedInputTokens: tokenCount(usage.input_tokens_details?.cached_tokens),
+    outputTokens,
+    reasoningTokens: tokenCount(usage.output_tokens_details?.reasoning_tokens),
+    totalTokens: tokenCount(usage.total_tokens) || inputTokens + outputTokens,
+  };
+}
+
+/**
+ * A model call that failed after OpenAI had already billed it — the reply was
+ * cut short or unparseable. Carries the usage so the spend is still recorded.
+ */
+export class ModelCallError extends Error {
+  constructor(
+    message: string,
+    readonly usage: TokenUsage | null,
+    readonly model?: string
+  ) {
+    super(message);
+    this.name = "ModelCallError";
+  }
+}
+
 export type ModelConfig = {
   apiKey: string;
   model?: string;
@@ -214,7 +273,7 @@ export async function generateWithModel(
   request: GenerateRequest,
   config: ModelConfig,
   signal?: AbortSignal
-): Promise<{ prompts: GeneratedItem[]; model: string }> {
+): Promise<{ prompts: GeneratedItem[]; model: string; usage: TokenUsage | null }> {
   const model = config.model || DEFAULT_MODEL;
 
   const payload = await callResponsesApi<{
@@ -243,13 +302,28 @@ export async function generateWithModel(
     signal
   );
 
+  const usage = readUsage(payload);
+  const servedBy = payload.model || model;
+
   if (payload.status === "incomplete") {
-    throw new Error(
-      `The model stopped early (${payload.incomplete_details?.reason ?? "unknown reason"}). Try asking for fewer prompts.`
+    throw new ModelCallError(
+      `The model stopped early (${payload.incomplete_details?.reason ?? "unknown reason"}). Try asking for fewer prompts.`,
+      usage,
+      servedBy
     );
   }
 
-  return { prompts: readOutput(payload), model: payload.model || model };
+  let prompts: GeneratedItem[];
+  try {
+    prompts = readOutput(payload);
+  } catch (error) {
+    throw new ModelCallError(
+      error instanceof Error ? error.message : "The model returned no usable prompts.",
+      usage,
+      servedBy
+    );
+  }
+  return { prompts, model: servedBy, usage };
 }
 
 /** Validates and normalises a request body arriving from the browser. */
@@ -334,7 +408,7 @@ export async function chatWithModel(
   request: ChatRequest,
   config: ModelConfig,
   signal?: AbortSignal
-): Promise<{ output: unknown[]; model: string }> {
+): Promise<{ output: unknown[]; model: string; usage: TokenUsage | null }> {
   const model = config.model || DEFAULT_MODEL;
 
   const payload = await callResponsesApi<{
@@ -355,5 +429,9 @@ export async function chatWithModel(
     signal
   );
 
-  return { output: payload.output ?? [], model: payload.model || model };
+  return {
+    output: payload.output ?? [],
+    model: payload.model || model,
+    usage: readUsage(payload),
+  };
 }

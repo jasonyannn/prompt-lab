@@ -48,6 +48,13 @@ by default, `MODEL_RATE_LIMIT_PER_HOUR` to change). Upstream calls time out at
 90–115 s, so a hung request no longer holds a worker. The spend cap (1) is
 still the only control that bounds total cost across many IPs. Set it.
 
+**Usage API.** Every OpenAI call is logged to `model_usage` (tokens, model,
+feature, duration, outcome; no prompt text, no IP) and readable at
+`/api/usage/*` with `Authorization: Bearer $USAGE_API_TOKEN`. It is off unless
+the token is set, refuses tokens under 32 characters, compares in constant time,
+and sends no CORS headers, so the token has to live in the tracker's server.
+The token only reveals spend; it cannot make model calls or touch the library.
+
 ---
 
 ## Finding 2 — the remote MCP library is a shared, unauthenticated space

@@ -14,6 +14,15 @@ import {
   parseGenerateRequest,
 } from "./openai";
 import type { Env } from "./env";
+import {
+  authorizeUsageRequest,
+  listModelUsage,
+  meterModelCall,
+  parseInterval,
+  parseUsageWindow,
+  summarizeModelUsage,
+  USAGE_RETENTION_DAYS,
+} from "./usage";
 
 function json(payload: unknown, init: ResponseInit = {}) {
   const headers = new Headers(init.headers);
@@ -266,7 +275,10 @@ async function handleModel(request: Request, env: Env, pathname: string) {
       return withHeaders(json({ error: chat }, { status: 400 }), cors);
     }
     try {
-      return withHeaders(json(await chatWithModel(chat, config)), cors);
+      const result = await meterModelCall(env.DB, "chat", model, () =>
+        chatWithModel(chat, config)
+      );
+      return withHeaders(json(result), cors);
     } catch (error) {
       console.error("[model:chat]", error);
       return withHeaders(
@@ -285,7 +297,9 @@ async function handleModel(request: Request, env: Env, pathname: string) {
   }
 
   try {
-    const result = await generateWithModel(parsed, config);
+    const result = await meterModelCall(env.DB, "generate", model, () =>
+      generateWithModel(parsed, config)
+    );
     return withHeaders(json(result), cors);
   } catch (error) {
     console.error("[model]", error);
@@ -299,6 +313,62 @@ async function handleModel(request: Request, env: Env, pathname: string) {
   }
 }
 
+/**
+ * Read-only usage API for an external tracker. Server-to-server only: no CORS
+ * headers, so a browser page cannot read it even with the token.
+ */
+async function handleUsage(request: Request, env: Env, url: URL) {
+  if (request.method !== "GET") {
+    return json({ error: "Method not allowed." }, { status: 405, headers: { Allow: "GET" } });
+  }
+  const denied = await authorizeUsageRequest(request, env.USAGE_API_TOKEN);
+  if (denied) {
+    return json(
+      { error: denied.error },
+      {
+        status: denied.status,
+        headers: denied.status === 401 ? { "WWW-Authenticate": "Bearer" } : undefined,
+      }
+    );
+  }
+  if (!env.DB) {
+    return json({ error: "Database binding unavailable." }, { status: 503 });
+  }
+
+  const window = parseUsageWindow(url.searchParams);
+  if (typeof window === "string") return json({ error: window }, { status: 400 });
+
+  if (url.pathname === "/api/usage/events") {
+    const limit = Number(url.searchParams.get("limit") ?? "");
+    const page = await listModelUsage(env.DB, window, {
+      cursor: url.searchParams.get("cursor"),
+      limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
+    });
+    return json({
+      ...window,
+      retentionDays: USAGE_RETENTION_DAYS,
+      count: page.events.length,
+      nextCursor: page.nextCursor,
+      events: page.events,
+    });
+  }
+
+  if (url.pathname === "/api/usage/summary") {
+    const parsed = parseInterval(url.searchParams.get("interval"));
+    if ("error" in parsed) return json({ error: parsed.error }, { status: 400 });
+    const { interval } = parsed;
+    const summary = await summarizeModelUsage(env.DB, window, interval);
+    return json({
+      ...window,
+      interval,
+      retentionDays: USAGE_RETENTION_DAYS,
+      ...summary,
+    });
+  }
+
+  return json({ error: "Not found." }, { status: 404 });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -309,6 +379,10 @@ export default {
 
     if (url.pathname.startsWith("/api/mcp/")) {
       return handleApi(request, env, url.pathname);
+    }
+
+    if (url.pathname.startsWith("/api/usage/")) {
+      return handleUsage(request, env, url);
     }
 
     if (url.pathname.startsWith("/api/model/")) {

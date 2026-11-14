@@ -135,3 +135,4 @@ Cursor rule, Claude skill, JSON spec, MCP prompt).
 | Knowledge files | 12 per agent, 50 MB | `knowledgeStore.ts` |
 | Saved conversations | 30, slimmed before writing | `conversationStore.ts` |
 | Remote activity log | 100 rows, arguments truncated to 4 KB | `database.ts` |
+| Token usage log | one row per OpenAI call, kept 90 days; reads page at 1000 | `usage.ts`, `model_usage` table |

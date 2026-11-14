@@ -17,4 +17,10 @@ export type Env = {
   OPENAI_REASONING_EFFORT?: string;
   /** Model calls allowed per caller IP per hour. Defaults to 60. */
   MODEL_RATE_LIMIT_PER_HOUR?: string;
+  /**
+   * Bearer token for the read-only usage API (/api/usage/*), handed to an
+   * external tracker such as Token Doctor. Unset means the API is off. At least
+   * 32 characters; generate with `openssl rand -hex 32`.
+   */
+  USAGE_API_TOKEN?: string;
 };
