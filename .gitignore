@@ -3,6 +3,8 @@ dist
 .DS_Store
 *.local
 *.tsbuildinfo
+# Local model-usage log written by `npm run dev`
+.promptlab/
 
 # Vendored third-party docs template (immanuel-lam/agentic-workflows, MIT)
 workflow-main/

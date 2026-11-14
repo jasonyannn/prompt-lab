@@ -415,3 +415,77 @@ export async function summarizeModelUsage(
     breakdown,
   };
 }
+
+/* ------------------------------------------------------------------ *
+ * HTTP
+ * ------------------------------------------------------------------ */
+
+function respond(payload: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  headers.set("Content-Type", "application/json; charset=utf-8");
+  headers.set("Cache-Control", "no-store");
+  headers.set("X-Content-Type-Options", "nosniff");
+  return new Response(JSON.stringify(payload, null, 2), { ...init, headers });
+}
+
+/**
+ * Serves /api/usage/*. Shared by the worker (server/index.ts) and the dev
+ * server (vite.config.ts), so local and deployed behave the same. Server-to-
+ * server only: no CORS headers, so a browser page cannot read it even with the
+ * token.
+ */
+export async function handleUsageRequest(
+  request: Request,
+  env: { DB?: D1Database; USAGE_API_TOKEN?: string }
+): Promise<Response> {
+  const url = new URL(request.url);
+  if (request.method !== "GET") {
+    return respond({ error: "Method not allowed." }, { status: 405, headers: { Allow: "GET" } });
+  }
+  const denied = await authorizeUsageRequest(request, env.USAGE_API_TOKEN);
+  if (denied) {
+    return respond(
+      { error: denied.error },
+      {
+        status: denied.status,
+        headers: denied.status === 401 ? { "WWW-Authenticate": "Bearer" } : undefined,
+      }
+    );
+  }
+  if (!env.DB) {
+    return respond({ error: "Database binding unavailable." }, { status: 503 });
+  }
+
+  const window = parseUsageWindow(url.searchParams);
+  if (typeof window === "string") return respond({ error: window }, { status: 400 });
+
+  if (url.pathname === "/api/usage/events") {
+    const limit = Number(url.searchParams.get("limit") ?? "");
+    const page = await listModelUsage(env.DB, window, {
+      cursor: url.searchParams.get("cursor"),
+      limit: Number.isFinite(limit) && limit > 0 ? limit : undefined,
+    });
+    return respond({
+      ...window,
+      retentionDays: USAGE_RETENTION_DAYS,
+      count: page.events.length,
+      nextCursor: page.nextCursor,
+      events: page.events,
+    });
+  }
+
+  if (url.pathname === "/api/usage/summary") {
+    const parsed = parseInterval(url.searchParams.get("interval"));
+    if ("error" in parsed) return respond({ error: parsed.error }, { status: 400 });
+    const { interval } = parsed;
+    const summary = await summarizeModelUsage(env.DB, window, interval);
+    return respond({
+      ...window,
+      interval,
+      retentionDays: USAGE_RETENTION_DAYS,
+      ...summary,
+    });
+  }
+
+  return respond({ error: "Not found." }, { status: 404 });
+}

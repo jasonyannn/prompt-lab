@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import worker from "./index";
 import type { Env } from "./env";
+import { createSqliteD1 } from "./localD1";
 import { ModelCallError, readUsage, type TokenUsage } from "./openai";
 import {
   authorizeUsageRequest,
@@ -13,40 +14,15 @@ import {
 
 /*
  * The SQL here (cursor paging, hour/day buckets) is the part worth testing, so
- * these suites run it against real SQLite through a thin D1 adapter rather than
- * a hand-written fake. node:sqlite ships with Node 22+; on older Node the
+ * these suites run it against real SQLite through the same D1 adapter the dev
+ * server uses (localD1.ts) rather than a hand-written fake. node:sqlite ships with Node 22+; on older Node the
  * database-backed suites skip and the pure ones still run.
  */
 const sqlite = await import("node:sqlite").catch(() => null);
 
 function sqliteD1(): D1Database {
   if (!sqlite) throw new Error("node:sqlite unavailable");
-  const database = new sqlite.DatabaseSync(":memory:");
-  const prepare = (sql: string) => {
-    let bound: unknown[] = [];
-    const statement = {
-      bind: (...values: unknown[]) => {
-        bound = values;
-        return statement;
-      },
-      run: async () => {
-        database.prepare(sql).run(...(bound as never[]));
-        return { success: true };
-      },
-      all: async () => ({ results: database.prepare(sql).all(...(bound as never[])) }),
-      first: async () => database.prepare(sql).get(...(bound as never[])) ?? null,
-    };
-    return statement;
-  };
-  return {
-    prepare,
-    batch: async (statements: { run(): Promise<unknown> }[]) => {
-      const results = [];
-      for (const statement of statements) results.push(await statement.run());
-      return results;
-    },
-    exec: async (sql: string) => database.exec(sql),
-  } as unknown as D1Database;
+  return createSqliteD1(new sqlite.DatabaseSync(":memory:"));
 }
 
 const usage: TokenUsage = {

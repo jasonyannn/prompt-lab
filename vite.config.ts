@@ -12,6 +12,42 @@ import {
   parseChatRequest,
   parseGenerateRequest,
 } from "./server/openai";
+import { createSqliteD1 } from "./server/localD1";
+import { handleUsageRequest, meterModelCall } from "./server/usage";
+
+/**
+ * Where `npm run dev` records model usage, so a local tracker such as Token
+ * Doctor can read it from /api/usage/* exactly as it would from the worker.
+ * Gitignored. Needs Node 22+ for node:sqlite; older Node just skips recording.
+ */
+const DEV_USAGE_DB = ".promptlab/usage.sqlite";
+
+async function openDevUsageDb(): Promise<D1Database | undefined> {
+  try {
+    const { DatabaseSync } = await import("node:sqlite");
+    await mkdir(resolve(".promptlab"), { recursive: true });
+    return createSqliteD1(new DatabaseSync(resolve(DEV_USAGE_DB)));
+  } catch (error) {
+    console.warn(
+      "[prompt-lab] Model usage will not be recorded locally (needs Node 22+):",
+      error instanceof Error ? error.message : error
+    );
+    return undefined;
+  }
+}
+
+/** Adapts a Node request to a fetch Request for the shared usage handler. */
+function toFetchRequest(req: any): Request {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers ?? {})) {
+    if (typeof value === "string") headers.set(name, value);
+    else if (Array.isArray(value)) headers.set(name, value.join(", "));
+  }
+  return new Request(new URL(req.url || "/", `http://${req.headers?.host || "localhost"}`), {
+    method: req.method,
+    headers,
+  });
+}
 
 function promptLabWorker() {
   return {
@@ -93,8 +129,30 @@ function devModelRoutes(env: Record<string, string>) {
         res.end(JSON.stringify(payload));
       };
 
-      server.middlewares.use((req, res, next) => {
+      // Opened once, on first use, so `vite` starts no slower.
+      let usageDb: Promise<D1Database | undefined> | null = null;
+      const devUsageDb = () => (usageDb ??= openDevUsageDb());
+
+      server.middlewares.use(async (req, res, next) => {
         const url = (req.url || "").split("?")[0];
+
+        if (url.startsWith("/api/usage/")) {
+          try {
+            const response = await handleUsageRequest(toFetchRequest(req), {
+              DB: await devUsageDb(),
+              USAGE_API_TOKEN: env.USAGE_API_TOKEN,
+            });
+            res.statusCode = response.status;
+            response.headers.forEach((value, name) => res.setHeader(name, value));
+            res.end(await response.text());
+          } catch (error) {
+            send(res, 500, {
+              error: error instanceof Error ? error.message : "Usage request failed.",
+            });
+          }
+          return;
+        }
+
         if (!url.startsWith("/api/model/")) return next();
 
         const apiKey = env.OPENAI_API_KEY;
@@ -130,18 +188,29 @@ function devModelRoutes(env: Record<string, string>) {
             effort: env.OPENAI_REASONING_EFFORT || DEFAULT_EFFORT,
           };
           try {
+            const db = await devUsageDb();
             if (url === "/api/model/chat") {
               const chat = parseChatRequest(body);
               if (typeof chat === "string") {
                 return send(res, 400, { error: chat });
               }
-              return send(res, 200, await chatWithModel(chat, config));
+              return send(
+                res,
+                200,
+                await meterModelCall(db, "chat", model, () => chatWithModel(chat, config))
+              );
             }
             const parsed = parseGenerateRequest(body);
             if (typeof parsed === "string") {
               return send(res, 400, { error: parsed });
             }
-            send(res, 200, await generateWithModel(parsed, config));
+            send(
+              res,
+              200,
+              await meterModelCall(db, "generate", model, () =>
+                generateWithModel(parsed, config)
+              )
+            );
           } catch (error) {
             send(res, 502, {
               error: error instanceof Error ? error.message : "Generation failed.",
