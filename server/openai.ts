@@ -199,13 +199,16 @@ export function readUsage(payload: unknown): TokenUsage | null {
 }
 
 /**
- * A model call that failed after OpenAI had already billed it — the reply was
- * cut short or unparseable. Carries the usage so the spend is still recorded.
+ * A failed model call. `message` is for the person in the browser; `code` is a
+ * fixed vocabulary for the usage log, which must not store upstream text — some
+ * OpenAI errors quote the request back. `usage` is set when OpenAI had already
+ * billed the call (reply cut short or unparseable), so the spend is recorded.
  */
 export class ModelCallError extends Error {
   constructor(
     message: string,
-    readonly usage: TokenUsage | null,
+    readonly code: string,
+    readonly usage: TokenUsage | null = null,
     readonly model?: string
   ) {
     super(message);
@@ -246,9 +249,16 @@ async function callResponsesApi<T extends { error?: { message?: string } }>(
     });
   } catch (error) {
     if (timeout.aborted) {
-      throw new Error("The model took too long to respond. Try a smaller request.");
+      throw new ModelCallError(
+        "The model took too long to respond. Try a smaller request.",
+        "timeout"
+      );
     }
-    throw error;
+    if (signal?.aborted) throw new ModelCallError("The request was cancelled.", "aborted");
+    throw new ModelCallError(
+      error instanceof Error ? error.message : "Could not reach the model provider.",
+      "network"
+    );
   }
 
   const text = await response.text();
@@ -262,9 +272,15 @@ async function callResponsesApi<T extends { error?: { message?: string } }>(
   if (!response.ok || !payload || payload.error) {
     const message = payload?.error?.message;
     if (response.status === 429) {
-      throw new Error(message || "The model provider is rate limiting requests. Try again shortly.");
+      throw new ModelCallError(
+        message || "The model provider is rate limiting requests. Try again shortly.",
+        "rate_limited"
+      );
     }
-    throw new Error(message || `The model request failed (${response.status}).`);
+    throw new ModelCallError(
+      message || `The model request failed (${response.status}).`,
+      `upstream_${response.status}`
+    );
   }
   return payload;
 }
@@ -306,8 +322,10 @@ export async function generateWithModel(
   const servedBy = payload.model || model;
 
   if (payload.status === "incomplete") {
+    const reason = payload.incomplete_details?.reason ?? "unknown";
     throw new ModelCallError(
-      `The model stopped early (${payload.incomplete_details?.reason ?? "unknown reason"}). Try asking for fewer prompts.`,
+      `The model stopped early (${reason}). Try asking for fewer prompts.`,
+      `incomplete:${reason.replace(/[^a-z_]/gi, "").slice(0, 40) || "unknown"}`,
       usage,
       servedBy
     );
@@ -319,6 +337,7 @@ export async function generateWithModel(
   } catch (error) {
     throw new ModelCallError(
       error instanceof Error ? error.message : "The model returned no usable prompts.",
+      "no_output",
       usage,
       servedBy
     );

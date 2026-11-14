@@ -86,9 +86,15 @@ describe("readUsage", () => {
 });
 
 describe("authorizeUsageRequest", () => {
-  it("is off until a long enough token is configured", async () => {
-    expect((await authorizeUsageRequest(withAuth(), undefined))?.status).toBe(503);
-    expect((await authorizeUsageRequest(withAuth("short"), "short"))?.status).toBe(503);
+  it("looks like a missing route until a long enough token is configured", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(await authorizeUsageRequest(withAuth(), undefined)).toEqual({
+      status: 404,
+      error: "Not found.",
+    });
+    expect((await authorizeUsageRequest(withAuth("short"), "short"))?.status).toBe(404);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
   });
 
   it("rejects a missing or wrong token and accepts the right one", async () => {
@@ -117,6 +123,20 @@ describe("parseUsageWindow", () => {
     });
   });
 
+  it("clamps to the retention window, so extreme dates cannot throw", () => {
+    const window = parseUsageWindow(
+      new URLSearchParams("since=0001-01-01&until=%2B275760-09-13T00:00:00Z"),
+      now
+    );
+    expect(window).toEqual({
+      since: "2026-08-15T12:00:00.000Z",
+      until: "2026-11-15T12:00:00.000Z",
+    });
+    expect(
+      typeof parseUsageWindow(new URLSearchParams("until=-271821-04-20T00:00:00Z"), now)
+    ).toBe("string");
+  });
+
   it("rejects bad dates and empty ranges", () => {
     expect(typeof parseUsageWindow(new URLSearchParams("since=yesterday"), now)).toBe("string");
     expect(
@@ -143,7 +163,7 @@ describe.skipIf(!sqlite)("meterModelCall", () => {
       "chat",
       "gpt-default",
       async () => ({ output: [], model: "gpt-served", usage }),
-      clock()
+      { clock: clock() }
     );
     expect(result.model).toBe("gpt-served");
 
@@ -163,20 +183,56 @@ describe.skipIf(!sqlite)("meterModelCall", () => {
     const db = sqliteD1();
     await expect(
       meterModelCall(db, "generate", "gpt-default", async () => {
-        throw new ModelCallError("The model stopped early (max_output_tokens).", usage, "gpt-served");
+        throw new ModelCallError(
+          "The model stopped early (max_output_tokens).",
+          "incomplete:max_output_tokens",
+          usage,
+          "gpt-served"
+        );
       })
     ).rejects.toThrow("stopped early");
     await expect(
       meterModelCall(db, "generate", "gpt-default", async () => {
-        throw new Error("The model took too long to respond.");
+        throw new ModelCallError("The model took too long to respond.", "timeout");
       })
     ).rejects.toThrow("too long");
 
     const { events } = await listModelUsage(db, recent());
     const byModel = Object.fromEntries(events.map((event) => [event.model, event]));
-    expect(byModel["gpt-served"]).toMatchObject({ ok: false, usage });
-    expect(byModel["gpt-default"]).toMatchObject({ ok: false, usage: null });
-    expect(byModel["gpt-default"].error).toContain("too long");
+    expect(byModel["gpt-served"]).toMatchObject({
+      ok: false,
+      usage,
+      error: "incomplete:max_output_tokens",
+    });
+    expect(byModel["gpt-default"]).toMatchObject({ ok: false, usage: null, error: "timeout" });
+  });
+
+  it("stores an error code, never upstream error text", async () => {
+    const db = sqliteD1();
+    await expect(
+      meterModelCall(db, "chat", "m", async () => {
+        throw new ModelCallError("Invalid value: '<script>attacker text</script>'", "upstream_400");
+      })
+    ).rejects.toThrow("Invalid value");
+    await expect(
+      meterModelCall(db, "chat", "m", async () => {
+        throw new Error("something unexpected with user text in it");
+      })
+    ).rejects.toThrow();
+
+    const { events } = await listModelUsage(db, recent());
+    expect(events.map((event) => event.error).sort()).toEqual(["unknown", "upstream_400"]);
+  });
+
+  it("hands the write to defer instead of holding the response", async () => {
+    const db = sqliteD1();
+    const deferred: Promise<unknown>[] = [];
+    await meterModelCall(db, "chat", "m", async () => ({ model: "m", usage }), {
+      defer: (work) => deferred.push(work),
+    });
+    expect(deferred).toHaveLength(1);
+    await Promise.all(deferred);
+    expect((await listModelUsage(db, recent())).events).toHaveLength(1);
   });
 
   it("never fails the request when recording fails", async () => {
@@ -294,8 +350,8 @@ describe.skipIf(!sqlite)("/api/usage routes", () => {
     expect(await summary.json()).toMatchObject({ interval: "day", totals: { calls: 0 } });
   });
 
-  it("is disabled without a token and validates its parameters", async () => {
-    expect((await worker.fetch(withAuth(), env({ USAGE_API_TOKEN: undefined }))).status).toBe(503);
+  it("is hidden without a token and validates its parameters", async () => {
+    expect((await worker.fetch(withAuth(), env({ USAGE_API_TOKEN: undefined }))).status).toBe(404);
 
     const bad = await worker.fetch(
       new Request("https://lab.test/api/usage/summary?interval=week", {

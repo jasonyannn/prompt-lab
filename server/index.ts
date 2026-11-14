@@ -182,7 +182,12 @@ async function handleApi(request: Request, env: Env, pathname: string) {
   return json({ error: "Not found." }, { status: 404 });
 }
 
-async function handleModel(request: Request, env: Env, pathname: string) {
+async function handleModel(
+  request: Request,
+  env: Env,
+  pathname: string,
+  ctx?: ExecutionContext
+) {
   const rejected = rejectInvalidOrigin(request, env);
   if (rejected) return rejected;
   const cors = corsHeaders(request, env);
@@ -263,6 +268,9 @@ async function handleModel(request: Request, env: Env, pathname: string) {
     return withHeaders(json({ error: "Invalid JSON body." }, { status: 400 }), cors);
   }
 
+  // Usage rows are written after the response is sent, not before it.
+  const meter = { defer: ctx ? (work: Promise<unknown>) => ctx.waitUntil(work) : undefined };
+
   const config = {
     apiKey: env.OPENAI_API_KEY,
     model: env.OPENAI_MODEL,
@@ -275,8 +283,12 @@ async function handleModel(request: Request, env: Env, pathname: string) {
       return withHeaders(json({ error: chat }, { status: 400 }), cors);
     }
     try {
-      const result = await meterModelCall(env.DB, "chat", model, () =>
-        chatWithModel(chat, config)
+      const result = await meterModelCall(
+        env.DB,
+        "chat",
+        model,
+        () => chatWithModel(chat, config),
+        meter
       );
       return withHeaders(json(result), cors);
     } catch (error) {
@@ -297,8 +309,12 @@ async function handleModel(request: Request, env: Env, pathname: string) {
   }
 
   try {
-    const result = await meterModelCall(env.DB, "generate", model, () =>
-      generateWithModel(parsed, config)
+    const result = await meterModelCall(
+      env.DB,
+      "generate",
+      model,
+      () => generateWithModel(parsed, config),
+      meter
     );
     return withHeaders(json(result), cors);
   } catch (error) {
@@ -370,7 +386,7 @@ async function handleUsage(request: Request, env: Env, url: URL) {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     if (url.pathname === "/mcp" || url.pathname === "/mcp/") {
@@ -386,7 +402,7 @@ export default {
     }
 
     if (url.pathname.startsWith("/api/model/")) {
-      return handleModel(request, env, url.pathname);
+      return handleModel(request, env, url.pathname, ctx);
     }
 
     const response = await env.ASSETS.fetch(request);

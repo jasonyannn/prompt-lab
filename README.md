@@ -420,6 +420,14 @@ curl -H "Authorization: Bearer $TOKEN" \
 Rows are kept 90 days. Prompt Lab reports tokens, not dollars — price them in
 the tracker, since rates change per model.
 
+- A wrong token gets `401`. With `USAGE_API_TOKEN` unset (or under 32
+  characters) the routes answer `404`, as if they did not exist.
+- `usage: null` means OpenAI reported nothing, usually a timeout. Treat it as
+  unknown, not zero: a timed-out call can still be billed.
+- `error` is a code — `timeout`, `rate_limited`, `upstream_<status>`,
+  `incomplete:<reason>`, `no_output`, `network`, `aborted`, `unknown` — never
+  the upstream message.
+
 ## Architecture
 
 ```

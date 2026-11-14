@@ -49,11 +49,14 @@ by default, `MODEL_RATE_LIMIT_PER_HOUR` to change). Upstream calls time out at
 still the only control that bounds total cost across many IPs. Set it.
 
 **Usage API.** Every OpenAI call is logged to `model_usage` (tokens, model,
-feature, duration, outcome; no prompt text, no IP) and readable at
-`/api/usage/*` with `Authorization: Bearer $USAGE_API_TOKEN`. It is off unless
-the token is set, refuses tokens under 32 characters, compares in constant time,
-and sends no CORS headers, so the token has to live in the tracker's server.
-The token only reveals spend; it cannot make model calls or touch the library.
+feature, duration, and a fixed error code; no prompt text, no upstream error
+text, no IP) and readable at `/api/usage/*` with
+`Authorization: Bearer $USAGE_API_TOKEN`. Without a token of at least 32
+characters the routes answer 404, indistinguishable from a missing route. The
+comparison is constant-time, dates are clamped to the 90-day retention window,
+and there are no CORS headers, so the token has to live in the tracker's
+server. The token only reveals spend; it cannot make model calls or touch the
+library. Rows are written with `waitUntil`, after the response is sent.
 
 ---
 
@@ -104,6 +107,10 @@ The OpenAI key never reaches the browser. It lives in the worker environment,
 and the browser talks only to `/api/model/*`. Locally it comes from `.env.local`,
 which matches the `*.local` rule already in `.gitignore` — verified with
 `git check-ignore`.
+
+`USAGE_API_TOKEN` is the second server-only secret and follows the same rules:
+Sites settings or `.env.local`, never a `VITE_` variable, and only in the
+usage tracker's server — never its browser code.
 
 The one trap worth remembering: **never** move the key to a `VITE_`-prefixed
 variable. Vite inlines those into the client bundle at build time, so it would

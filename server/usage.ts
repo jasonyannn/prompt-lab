@@ -7,13 +7,15 @@
  *   GET /api/usage/events   — the raw calls, oldest first, cursor-paginated
  *   GET /api/usage/summary  — totals, optionally bucketed by hour or day
  *
- * Both need `Authorization: Bearer <USAGE_API_TOKEN>`. With no token configured
- * the API answers 503, so a deployment exposes nothing until someone opts in.
+ * Both need `Authorization: Bearer <USAGE_API_TOKEN>`. With no valid token
+ * configured the routes answer 404, so a deployment exposes nothing — not even
+ * that the API exists — until someone opts in.
  * There are no CORS headers on purpose: the token belongs in the tracker's
  * server, never in a browser.
  *
- * Rows hold counts, the model, the feature and timing — never prompt text or
- * the caller's IP — so the token only ever reveals how much was spent.
+ * Rows hold counts, the model, the feature, timing and a fixed error code —
+ * never prompt text, upstream error text or the caller's IP — so the token only
+ * ever reveals how much was spent.
  */
 import { ensureDatabase } from "./database";
 import { ModelCallError, type TokenUsage } from "./openai";
@@ -26,9 +28,13 @@ export type UsageEvent = {
   feature: UsageFeature;
   model: string;
   ok: boolean;
-  /** Null when the call failed before OpenAI reported usage. */
+  /**
+   * Null when OpenAI reported no usage — the call failed or timed out first.
+   * Unknown, not zero: a timed-out call may still have been billed.
+   */
   usage: TokenUsage | null;
   durationMs: number;
+  /** A code such as `timeout`, `rate_limited`, `upstream_400`; null on success. */
   error: string | null;
 };
 
@@ -71,7 +77,7 @@ export async function recordModelUsage(
       usage?.reasoningTokens ?? null,
       usage?.totalTokens ?? null,
       Math.max(0, Math.round(event.durationMs)),
-      event.error ? event.error.slice(0, 300) : null
+      event.error ? event.error.slice(0, 60) : null
     )
     .run();
 
@@ -80,6 +86,15 @@ export async function recordModelUsage(
     await db.prepare("DELETE FROM model_usage WHERE created_at < ?").bind(cutoff).run();
   }
 }
+
+export type MeterOptions = {
+  /**
+   * Hands the write off so the response does not wait on D1 — the worker passes
+   * `ctx.waitUntil`. Without it the write is awaited, which tests rely on.
+   */
+  defer?: (work: Promise<unknown>) => void;
+  clock?: () => number;
+};
 
 /**
  * Runs one model call and records it, whether it succeeds or fails. Recording
@@ -92,16 +107,19 @@ export async function meterModelCall<
   feature: UsageFeature,
   fallbackModel: string,
   run: () => Promise<T>,
-  clock: () => number = Date.now
+  { defer, clock = Date.now }: MeterOptions = {}
 ): Promise<T> {
   const started = clock();
   const record = async (event: Omit<UsageEvent, "id" | "at" | "feature" | "durationMs">) => {
     if (!db) return;
-    try {
-      await recordModelUsage(db, { ...event, feature, durationMs: clock() - started });
-    } catch (error) {
-      console.error("[usage:record]", error);
-    }
+    // Duration is taken now, not when a deferred write gets round to running.
+    const write = recordModelUsage(db, {
+      ...event,
+      feature,
+      durationMs: clock() - started,
+    }).catch((error) => console.error("[usage:record]", error));
+    if (defer) defer(write);
+    else await write;
   };
 
   try {
@@ -109,12 +127,12 @@ export async function meterModelCall<
     await record({ model: result.model, usage: result.usage, ok: true, error: null });
     return result;
   } catch (error) {
-    const billed = error instanceof ModelCallError ? error : null;
+    const failure = error instanceof ModelCallError ? error : null;
     await record({
-      model: billed?.model || fallbackModel,
-      usage: billed?.usage ?? null,
+      model: failure?.model || fallbackModel,
+      usage: failure?.usage ?? null,
       ok: false,
-      error: error instanceof Error ? error.message : "Model call failed.",
+      error: failure?.code ?? "unknown",
     });
     throw error;
   }
@@ -137,21 +155,24 @@ async function sameSecret(a: string, b: string) {
   return difference === 0;
 }
 
-export type UsageAuthFailure = { status: 401 | 503; error: string };
+export type UsageAuthFailure = { status: 401 | 404; error: string };
 
+/**
+ * Off or misconfigured looks identical to a route that does not exist, so a
+ * scanner learns nothing; the reason goes to the worker log instead.
+ */
 export async function authorizeUsageRequest(
   request: Request,
   configuredToken: string | undefined
 ): Promise<UsageAuthFailure | null> {
   const expected = configuredToken?.trim() ?? "";
-  if (!expected) {
-    return { status: 503, error: "The usage API is not enabled. Set USAGE_API_TOKEN." };
-  }
   if (expected.length < MIN_TOKEN_LENGTH) {
-    return {
-      status: 503,
-      error: `USAGE_API_TOKEN must be at least ${MIN_TOKEN_LENGTH} characters.`,
-    };
+    if (expected) {
+      console.warn(
+        `[usage] USAGE_API_TOKEN is under ${MIN_TOKEN_LENGTH} characters; the usage API stays off.`
+      );
+    }
+    return { status: 404, error: "Not found." };
   }
   const header = request.headers.get("Authorization") ?? "";
   const match = /^Bearer\s+(.+)$/i.exec(header.trim());
@@ -175,18 +196,25 @@ function parseInstant(value: string | null, name: string): Date | string | null 
     : date;
 }
 
-/** Reads `since` / `until` (ISO); defaults to the last 7 days. */
+/**
+ * Reads `since` / `until` (ISO); defaults to the last 7 days. Both are clamped
+ * to the retention window (and at most a day ahead), which also keeps them
+ * inside four-digit years — beyond that toISOString() writes `+275760-…`, which
+ * breaks the string ordering the queries rely on, or throws outright.
+ */
 export function parseUsageWindow(params: URLSearchParams, now = new Date()): UsageWindow | string {
   const since = parseInstant(params.get("since"), "since");
   if (typeof since === "string") return since;
   const until = parseInstant(params.get("until"), "until");
   if (typeof until === "string") return until;
 
-  const end = until ?? now;
-  const start = since ?? new Date(end.getTime() - DEFAULT_WINDOW_DAYS * DAY_MS);
-  if (start.getTime() >= end.getTime()) return "`since` must be before `until`.";
+  const floor = now.getTime() - (USAGE_RETENTION_DAYS + 1) * DAY_MS;
+  const ceiling = now.getTime() + DAY_MS;
+  const end = Math.min(until?.getTime() ?? now.getTime(), ceiling);
+  const start = Math.max(since?.getTime() ?? end - DEFAULT_WINDOW_DAYS * DAY_MS, floor);
+  if (start >= end) return "`since` must be before `until`, and within the last 90 days.";
   // Stored timestamps are toISOString(), so normalising makes string order = time order.
-  return { since: start.toISOString(), until: end.toISOString() };
+  return { since: new Date(start).toISOString(), until: new Date(end).toISOString() };
 }
 
 /* ------------------------------------------------------------------ *
