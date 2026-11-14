@@ -398,8 +398,12 @@ generated Drizzle migration under `drizzle/`.
 Every OpenAI call through `/api/model/*` is recorded in D1 — tokens (input,
 cached, output, reasoning), model, feature (`generate` or `chat`), duration and
 whether it succeeded. Never prompt text or IPs. An external tracker such as
-Token Doctor reads it with a bearer token. Sites builds only; GitHub Pages and
-`npm run dev` make no metered calls to record.
+Token Doctor reads it with a bearer token. Works on the Sites build (D1) and
+under `npm run dev`, which logs to `.promptlab/usage.sqlite` (gitignored; Node
+22+) and serves the same `/api/usage/*` at `http://localhost:5173`. GitHub
+Pages makes no model calls, so there is nothing to record there. Locally, put
+`OPENAI_API_KEY` and `USAGE_API_TOKEN` in `.env.local` instead of Sites
+settings.
 
 1. Generate a token: `openssl rand -hex 32`.
 2. Add it to the Sites project settings as `USAGE_API_TOKEN`, then redeploy.
